@@ -1,15 +1,315 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
+
 }
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique
+  password      String
+  fullName      String
+  gender        String
+  dateOfBirth   DateTime
+  avatarUrl     String?
+  refreshToken  String?       
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  presence      UserPresence?
+  workspaceMembers WorkspaceMember[]
+  channelMembers   ChannelMember[]
+  joinRequestsSent JoinRequest[] @relation("JoinRequestUser")
+  joinRequestsReviewed JoinRequest[] @relation("JoinRequestReviewer")
+  conversations    ConversationParticipant[]
+  messagesSent     Message[]       @relation("SenderMessages")
+  messagesDeleted  Message[]       @relation("DeletedMessages")
+  messageMentions  MessageMention[]
+  notifications    Notification[]
+  posts            Post[]
+  comments         Comment[]
+  reactions        Reaction[]
+  filesUploaded    File[]
+  otps             Otp[]
+}
+
+
+model UserPresence {
+  userId    String   @id
+  status    String   @default("offline")
+  lastSeen  DateTime?
+  updatedAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Workspace {
+  id          String            @id @default(uuid())
+  name        String
+  description String?
+  avatarUrl   String?  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  members     WorkspaceMember[]
+  channels    Channel[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        String
+  joinedAt    DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Channel {
+  id          String           @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  isPrivate   Boolean          @default(false)
+  joinCode    String?          @unique
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members     ChannelMember[]
+  joinRequests JoinRequest[]
+  conversations Conversation[]
+  posts       Post[]
+  files       File[]
+
+  @@index([workspaceId])
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String
+  userId    String
+  role      String
+  joinedAt  DateTime @default(now())
+
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+}
+
+model JoinRequest {
+  id         String    @id @default(uuid())
+  channelId  String
+  userId     String
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  reviewedBy String?
+
+  channel    Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user       User      @relation("JoinRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relation với người review
+  reviewer   User?     @relation("JoinRequestReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([channelId, userId, status])
+  @@index([status])
+}
+
+model Conversation {
+  id         String    @id @default(uuid())
+  type       String
+  channelId  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  channel    Channel?  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([type])
+  @@index([channelId])
+}
+
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime  @default(now())
+  lastReadAt     DateTime?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Reactable {
+  id   String  @id @default(uuid())
+  type String
+  posts    Post[]
+  messages Message[]
+  comments Comment[]
+  reactions Reaction[]
+  fileAttachments FileAttachment[]
+}
+
+model Message {
+  id            String    @id @default(uuid())
+  conversationId String
+  senderId      String
+  content       String?
+  replyToId     String?
+  isDeleted     Boolean   @default(false)
+  deletedAt     DateTime?
+  deletedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  reactableId   String    @unique
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender        User         @relation("SenderMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  deletedBy     User?        @relation("DeletedMessages", fields: [deletedById], references: [id], onDelete: SetNull)
+  replyTo       Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  mentions      MessageMention[]
+  reactable     Reactable    @relation(fields: [reactableId], references: [id], onDelete: Cascade)
+
+  replies       Message[]    @relation("MessageReplies")
+}
+
+model MessageMention {
+  id             String    @id @default(uuid())
+  messageId      String
+  mentionedUserId String
+  createdAt      DateTime  @default(now())
+
+  message        Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mentionedUser  User      @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  type        String
+  content     String
+  referenceId String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  channelId   String
+  authorId    String
+  content     String
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  reactableId String   @unique
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+  reactable   Reactable @relation(fields: [reactableId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@index([authorId])
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  postId      String
+  authorId    String
+  content     String
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  reactableId String   @unique
+
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactable   Reactable @relation(fields: [reactableId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+}
+
+model Reaction {
+  id          String   @id @default(uuid())
+  reactableId String
+  userId      String
+  emoji       String
+  createdAt   DateTime @default(now())
+
+  reactable   Reactable @relation(fields: [reactableId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reactableId, userId, emoji])
+  @@index([userId])
+}
+
+model File {
+  id         String   @id @default(uuid())
+  channelId  String
+  uploadedBy String
+  fileName   String
+  fileUrl    String
+  createdAt  DateTime @default(now())
+
+  channel    Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  uploader   User    @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([uploadedBy])
+  @@index([createdAt])
+}
+
+model FileAttachment {
+  id          String    @id @default(uuid())
+  reactableId String
+  fileUrl     String
+  createdAt   DateTime  @default(now())
+
+  reactable   Reactable @relation(fields: [reactableId], references: [id], onDelete: Cascade)
+
+  @@index([reactableId])
+}
+
+model Otp {
+  id         String   @id @default(uuid())
+  userId     String
+  otpCode    String
+  expiresAt  DateTime
+  isUsed     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([otpCode, isUsed])
+}
+
