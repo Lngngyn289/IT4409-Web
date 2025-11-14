@@ -8,6 +8,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
 
+  const clientOrigin = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
+  app.enableCors({
+    origin: clientOrigin,
+    credentials: true,
+  });
+
   const config = new DocumentBuilder()
     .setTitle('Auth API')
     .setDescription('API đăng ký / đăng nhập')
