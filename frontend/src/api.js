@@ -3,12 +3,15 @@ export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 export async function request(path, options = {}) {
   const { headers, body, ...rest } = options;
 
+  // Don't set Content-Type for FormData - browser will set it with boundary
+  const isFormData = body instanceof FormData;
+
   const response = await fetch(`${API_URL}${path}`, {
     method: rest.method ?? "GET",
     credentials: rest.credentials ?? "include",
     body,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(headers || {}),
     },
   });

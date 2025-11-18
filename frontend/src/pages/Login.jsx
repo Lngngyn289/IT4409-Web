@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout.jsx";
 import FormField from "../components/FormField.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -27,6 +27,7 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleChange = (field) => (event) => {
     setFormState((prev) => ({ ...prev, [field]: event.target.value }));
@@ -44,6 +45,10 @@ function LoginPage() {
         message: "Đăng nhập thành công!",
         user: result.user,
       });
+      // Redirect to workspaces after successful login
+      setTimeout(() => {
+        navigate("/workspaces");
+      }, 1000);
     } catch (err) {
       setError(err.message);
     } finally {
