@@ -19,6 +19,9 @@ export class WorkspaceResponseDto {
   @ApiProperty({ description: 'Số lượng thành viên trong workspace' })
   memberCount: number;
 
+  isPrivate: boolean;
+  joinCode: string;
+
   @ApiProperty({ description: 'Role của user hiện tại trong workspace' })
   myRole: string;
 }

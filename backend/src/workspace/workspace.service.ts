@@ -8,22 +8,31 @@ import { CreateWorkspaceDto } from './dtos/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dtos/update-workspace.dto';
 import { WorkspaceResponseDto } from './dtos/workspace-response.dto';
 import { ROLES } from '../common/constants/roles.constant';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class WorkspaceService {
   constructor(private prisma: PrismaService) {}
 
+  private generateJoinCode(): string {
+    return randomBytes(4).toString('hex'); // ví dụ: a3f8c912
+  }
+
   // 5. Tạo workspace
   async create(
     userId: string,
     dto: CreateWorkspaceDto,
-    avatarUrl?: string, // thêm param avatarUrl
+    avatarUrl?: string,
   ): Promise<WorkspaceResponseDto> {
+    const joinCode = this.generateJoinCode();
+
     const workspace = await this.prisma.workspace.create({
       data: {
         name: dto.name,
         description: dto.description,
-        avatarUrl: avatarUrl ?? null, // sử dụng param avatarUrl thay vì dto
+        avatarUrl: avatarUrl ?? null,
+        isPrivate: dto.isPrivate ?? false,
+        joinCode,
       },
     });
 
@@ -34,7 +43,11 @@ export class WorkspaceService {
     if (!role) throw new NotFoundException('Role WORKSPACE_ADMIN not found');
 
     await this.prisma.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId, roleId: role.id },
+      data: {
+        workspaceId: workspace.id,
+        userId,
+        roleId: role.id,
+      },
     });
 
     return {
@@ -42,6 +55,8 @@ export class WorkspaceService {
       name: workspace.name,
       description: workspace.description ?? undefined,
       avatarUrl: workspace.avatarUrl ?? undefined,
+      isPrivate: workspace.isPrivate,
+      joinCode: workspace.joinCode!,
       createdAt: workspace.createdAt,
       myRole: role.name,
       memberCount: 1,
@@ -60,6 +75,8 @@ export class WorkspaceService {
       name: m.workspace.name,
       description: m.workspace.description ?? undefined,
       avatarUrl: m.workspace.avatarUrl ?? undefined,
+      isPrivate: m.workspace.isPrivate,
+      joinCode: m.workspace.joinCode!,
       createdAt: m.workspace.createdAt,
       updatedAt: m.workspace.updatedAt,
       myRole: m.role?.name ?? null,
@@ -87,6 +104,8 @@ export class WorkspaceService {
       id: workspace.id,
       name: workspace.name,
       description: workspace.description ?? undefined,
+      isPrivate: workspace.isPrivate,
+      joinCode: workspace.joinCode!,
       avatarUrl: workspace.avatarUrl ?? undefined,
       createdAt: workspace.createdAt,
       myRole: membership.role?.name ?? null,
@@ -120,6 +139,8 @@ export class WorkspaceService {
       name: workspace.name,
       description: workspace.description ?? undefined,
       avatarUrl: workspace.avatarUrl ?? undefined,
+      isPrivate: workspace.isPrivate,
+      joinCode: workspace.joinCode!,
       createdAt: workspace.createdAt,
       myRole: membership.role?.name ?? null,
       memberCount: workspace.members.length,
