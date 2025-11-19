@@ -64,7 +64,7 @@ function LoginPage() {
       footer={
         <span>
           Bạn chưa có tài khoản?{" "}
-          <Link to="/register" className="text-indigo-300 underline-offset-2 hover:text-indigo-200">
+          <Link to="/register" className="font-medium text-blue-600 underline-offset-2 hover:text-blue-700">
             Đăng ký ngay
           </Link>
         </span>
@@ -80,37 +80,32 @@ function LoginPage() {
           />
         ))}
         <div className="flex justify-end">
-          <Link 
-            to="/forgot-password" 
-            className="text-sm text-indigo-300 hover:text-indigo-200 underline-offset-2"
+          <Link
+            to="/forgot-password"
+            className="text-sm text-blue-600 hover:text-blue-700 underline-offset-2"
           >
             Quên mật khẩu?
           </Link>
         </div>
         {error && (
-          <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </p>
         )}
         {success && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-100">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
             <p className="font-semibold">{success.message}</p>
-            <p className="text-xs text-emerald-200/80">
+            <p className="text-xs text-emerald-600">
               Xin chào {success.user?.fullName || success.user?.email}!
             </p>
           </div>
         )}
         <button
           type="submit"
-          className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-70"
+          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
           disabled={isLoading}
         >
-          <span className="absolute inset-0 opacity-0 blur-2xl transition duration-500 group-hover:opacity-60">
-            <span className="block h-full w-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400" />
-          </span>
-          <span className="relative flex items-center gap-2">
-            {isLoading ? "Đang xử lý..." : "Đăng nhập"}
-          </span>
+          {isLoading ? "Đang xử lý..." : "Đăng nhập"}
         </button>
       </form>
     </AuthLayout>

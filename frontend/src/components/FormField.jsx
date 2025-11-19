@@ -13,20 +13,20 @@ function FormField({
   if (type === "select") {
     return (
       <label htmlFor={id} className="block text-sm">
-        <span className="mb-1 inline-flex items-center gap-2 text-slate-300">
+        <span className="mb-1 inline-flex items-center gap-2 font-medium text-gray-700">
           {label}
-          {optional && <span className="text-xs text-slate-500">(không bắt buộc)</span>}
+          {optional && <span className="text-xs text-gray-400">(không bắt buộc)</span>}
         </span>
-        <div className="relative rounded-2xl border border-white/10 bg-slate-900/50">
+        <div className="relative rounded-lg border border-gray-300 bg-white">
           <select
             id={id}
             name={name}
             value={value}
             onChange={onChange}
-            className="w-full rounded-2xl bg-transparent px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full rounded-lg bg-transparent px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {options?.map((option) => (
-              <option key={option.value} value={option.value} className="bg-slate-900 text-slate-900">
+              <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
@@ -38,11 +38,11 @@ function FormField({
 
   return (
     <label htmlFor={id} className="block text-sm">
-      <span className="mb-1 inline-flex items-center gap-2 text-slate-300">
+      <span className="mb-1 inline-flex items-center gap-2 font-medium text-gray-700">
         {label}
-        {optional && <span className="text-xs text-slate-500">(không bắt buộc)</span>}
+        {optional && <span className="text-xs text-gray-400">(không bắt buộc)</span>}
       </span>
-      <div className="relative rounded-2xl border border-white/10 bg-slate-950/30 focus-within:border-indigo-400/80">
+      <div className="relative rounded-lg border border-gray-300 bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
         <input
           id={id}
           type={type}
@@ -50,7 +50,7 @@ function FormField({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="w-full rounded-2xl bg-transparent px-4 py-3 text-white placeholder:text-slate-500 focus:outline-none"
+          className="w-full rounded-lg bg-transparent px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none"
           required={!optional}
         />
       </div>
