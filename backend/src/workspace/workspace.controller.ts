@@ -42,7 +42,7 @@ export class WorkspaceController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('avatar')) // tên field trong form-data
+  @UseInterceptors(FileInterceptor('avatar'))
   @ApiOperation({ summary: 'Create a new workspace with optional avatar file' })
   @ApiBody({ type: CreateWorkspaceDto })
   @ApiResponse({

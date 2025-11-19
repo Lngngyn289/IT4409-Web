@@ -61,7 +61,9 @@ model Workspace {
   id          String            @id @default(uuid())
   name        String
   description String?
-  avatarUrl   String?  
+  avatarUrl   String?
+  isPrivate   Boolean           @default(false)
+  joinCode    String?           @unique    
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
