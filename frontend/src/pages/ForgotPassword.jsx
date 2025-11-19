@@ -35,9 +35,9 @@ function ForgotPasswordPage() {
       footer={
         <span>
           Đã nhớ lại mật khẩu?{" "}
-          <Link 
-            to="/login" 
-            className="text-indigo-300 underline-offset-2 hover:text-indigo-200"
+          <Link
+            to="/login"
+            className="font-medium text-blue-600 underline-offset-2 hover:text-blue-700"
           >
             Đăng nhập
           </Link>
@@ -56,15 +56,15 @@ function ForgotPasswordPage() {
         />
 
         {error && (
-          <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </p>
         )}
 
         {success && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-100">
-            <p className="font-semibold">✓ Email đã được gửi!</p>
-            <p className="mt-1 text-xs text-emerald-200/80">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+            <p className="font-semibold">Email đã được gửi!</p>
+            <p className="mt-1 text-xs text-emerald-600">
               Vui lòng kiểm tra hộp thư của bạn và làm theo hướng dẫn để đặt lại mật khẩu.
               Link sẽ hết hạn sau 15 phút.
             </p>
@@ -73,21 +73,16 @@ function ForgotPasswordPage() {
 
         <button
           type="submit"
-          className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-70"
+          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
           disabled={isLoading || !email}
         >
-          <span className="absolute inset-0 opacity-0 blur-2xl transition duration-500 group-hover:opacity-60">
-            <span className="block h-full w-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400" />
-          </span>
-          <span className="relative flex items-center gap-2">
-            {isLoading ? "Đang gửi..." : "Gửi link đặt lại mật khẩu"}
-          </span>
+          {isLoading ? "Đang gửi..." : "Gửi link đặt lại mật khẩu"}
         </button>
 
         <div className="text-center">
-          <Link 
-            to="/register" 
-            className="text-sm text-slate-400 hover:text-slate-300"
+          <Link
+            to="/register"
+            className="text-sm text-gray-500 hover:text-blue-600"
           >
             Chưa có tài khoản? Đăng ký ngay
           </Link>

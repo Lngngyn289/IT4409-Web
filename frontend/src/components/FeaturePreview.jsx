@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
-const heroPhrases = ["Where work happens", "Nơi workspace kết nối", "Channel cùng sáng tạo"];
+const heroPhrases = ["Nơi công việc diễn ra", "Nơi workspace kết nối", "Channel cùng sáng tạo"];
 
 const workspaces = [
-  { name: "Marketing Squad", members: 18, color: "from-rose-500 to-orange-400" },
-  { name: "HUST Lab R&D", members: 32, color: "from-indigo-500 to-purple-500" },
+  { name: "Marketing Squad", members: 18, color: "bg-blue-500" },
+  { name: "HUST Lab R&D", members: 32, color: "bg-sky-600" },
 ];
 
 const channels = [
@@ -48,8 +48,8 @@ function FeaturePreview({ variant = "scroll" }) {
 
   const wrapperClass =
     variant === "static"
-      ? "order-2 flex flex-col rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-700/60 via-purple-700/50 to-slate-950/70 p-4 text-white shadow-xl shadow-indigo-900/60 lg:order-1 lg:p-6"
-      : "order-2 flex max-h-[80vh] flex-col overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-700/60 via-purple-700/50 to-slate-950/70 p-4 text-white shadow-xl shadow-indigo-900/60 lg:order-1 lg:p-6";
+      ? "order-2 flex flex-col rounded-2xl border border-sky-200 bg-gradient-to-br from-blue-600 to-sky-500 p-4 text-white shadow-lg lg:order-1 lg:p-6"
+      : "order-2 flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-sky-200 bg-gradient-to-br from-blue-600 to-sky-500 p-4 text-white shadow-lg lg:order-1 lg:p-6";
 
   const bodyClass =
     variant === "static"
@@ -65,42 +65,40 @@ function FeaturePreview({ variant = "scroll" }) {
 
   return (
     <aside className={wrapperClass}>
-      <div className="flex min-h-[150px] flex-col items-center justify-center rounded-2xl bg-white/10 p-6 text-center">
-        <p className="text-xs uppercase tracking-[0.35em] text-amber-200/90">Where work happens</p>
-        <h3 className="mt-4 text-4xl font-semibold leading-tight">
-          <span className="gradient-animated-text bg-clip-text text-transparent">
-            {heroPhrases[phraseIndex]}
-          </span>
+      <div className="flex min-h-[150px] flex-col items-center justify-center rounded-xl bg-white/20 p-6 text-center backdrop-blur-sm">
+        <p className="text-xs uppercase tracking-[0.35em] text-sky-100">Where work happens</p>
+        <h3 className="mt-4 text-4xl font-semibold leading-tight text-white">
+          {heroPhrases[phraseIndex]}
         </h3>
       </div>
 
       <div className={bodyClass} style={bodyStyle}>
-        <div className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+        <div className="grid gap-3 rounded-xl border border-white/20 bg-black/10 p-3">
           {workspaces.map((ws) => (
             <div
               key={ws.name}
-              className={`rounded-2xl bg-gradient-to-r ${ws.color} p-4 text-sm font-semibold shadow-inner shadow-black/30`}
+              className={`rounded-xl ${ws.color} p-4 text-sm font-semibold shadow-md`}
             >
-              <p className="text-base font-semibold text-white/90">{ws.name}</p>
-              <p className="text-xs text-white/70">{ws.members} thành viên hoạt động</p>
+              <p className="text-base font-semibold text-white">{ws.name}</p>
+              <p className="text-xs text-white/80">{ws.members} thành viên hoạt động</p>
             </div>
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 rounded-2xl bg-slate-950/50 p-4">
+        <div className="flex flex-col gap-3 rounded-xl bg-black/10 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-200">Channel đang theo dõi</p>
-            <span className="text-xs text-indigo-200/80">Realtime sync</span>
+            <p className="text-sm font-semibold text-white">Channel đang theo dõi</p>
+            <span className="text-xs text-sky-100">Realtime sync</span>
           </div>
           <div className="space-y-2">
             {channels.map((channel) => (
               <div
                 key={channel.name}
-                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm"
               >
                 <span>{channel.name}</span>
                 {channel.unread > 0 && (
-                  <span className="rounded-full bg-amber-400/80 px-2 py-0.5 text-xs font-semibold text-slate-900">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-600">
                     {channel.unread}
                   </span>
                 )}
@@ -109,32 +107,32 @@ function FeaturePreview({ variant = "scroll" }) {
           </div>
         </div>
 
-        <div className="grid gap-3 rounded-2xl bg-slate-950/40 p-4">
+        <div className="grid gap-3 rounded-xl bg-black/10 p-4">
           {sampleMessages.map((msg) => (
-            <div key={msg.author} className="rounded-2xl border border-white/5 bg-white/5 p-3 text-sm">
-              <div className="mb-2 flex items-center justify-between text-xs text-slate-200/80">
+            <div key={msg.author} className="rounded-xl border border-white/10 bg-white/10 p-3 text-sm">
+              <div className="mb-2 flex items-center justify-between text-xs text-sky-100">
                 <span>{msg.channel}</span>
                 <span>{msg.time}</span>
               </div>
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/70 font-semibold">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 font-semibold">
                   {msg.avatar}
                 </div>
                 <div>
                   <p className="font-semibold">{msg.author}</p>
-                  <p className="text-slate-100/80">{msg.text}</p>
+                  <p className="text-white/90">{msg.text}</p>
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="flex gap-3 rounded-2xl bg-slate-950/60 p-4">
+        <div className="flex gap-3 rounded-xl bg-black/20 p-4">
           {highlights.map((highlight) => (
             <div key={highlight.label} className="flex-1">
               <p className="text-2xl font-semibold">{highlight.value}</p>
-              <p className="text-sm text-slate-300">{highlight.label}</p>
-              <p className="text-xs text-slate-400">{highlight.desc}</p>
+              <p className="text-sm text-white">{highlight.label}</p>
+              <p className="text-xs text-sky-100">{highlight.desc}</p>
             </div>
           ))}
         </div>
