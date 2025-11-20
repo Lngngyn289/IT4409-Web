@@ -92,16 +92,16 @@ function JoinRequests({ workspaceId }) {
             <li key={request.id} className="flex items-center gap-4 px-4 py-3">
               {/* Avatar */}
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">
-                {(request.username || "U").charAt(0).toUpperCase()}
+                {(request.fullName || request.username || "U").charAt(0).toUpperCase()}
               </div>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium text-gray-900">
-                  {request.username}
+                  {request.fullName}
                 </p>
                 <p className="truncate text-xs text-gray-500">
-                  {request.email}
+                  @{request.username}
                 </p>
                 {request.createdAt && (
                   <p className="text-xs text-gray-400">

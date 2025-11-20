@@ -63,21 +63,21 @@ function WorkspaceMembers({ workspaceId }) {
                 {member.avatarUrl ? (
                   <img
                     src={member.avatarUrl}
-                    alt={member.name}
+                    alt={member.fullName || member.username}
                     className="h-full w-full rounded-full object-cover"
                   />
                 ) : (
-                  (member.name || "U").charAt(0).toUpperCase()
+                  (member.fullName || member.username || "U").charAt(0).toUpperCase()
                 )}
               </div>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium text-gray-900">
-                  {member.name}
+                  {member.fullName}
                 </p>
                 <p className="truncate text-xs text-gray-500">
-                  {member.email}
+                  @{member.username}
                 </p>
               </div>
 

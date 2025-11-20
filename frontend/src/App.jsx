@@ -5,6 +5,7 @@ import ForgotPasswordPage from "./pages/ForgotPassword.jsx";
 import ResetPasswordPage from "./pages/ResetPassword.jsx";
 import WorkspaceList from "./pages/WorkspaceList.jsx";
 import WorkspaceAdmin from "./pages/WorkspaceAdmin.jsx";
+import Profile from "./pages/Profile.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/workspaces" element={<WorkspaceList />} />
           <Route path="/workspace/:workspaceId/admin" element={<WorkspaceAdmin />} />
+          <Route path="/profile" element={<Profile />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
