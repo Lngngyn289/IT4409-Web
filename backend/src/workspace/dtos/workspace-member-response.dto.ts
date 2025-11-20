@@ -1,6 +1,7 @@
 export class WorkspaceMemberResponseDto {
   id: string;
-  name: string;
+  username: string;
+  fullName: string;
   email: string;
   avatarUrl?: string;
   role: string;

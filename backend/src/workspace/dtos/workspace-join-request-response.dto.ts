@@ -2,6 +2,7 @@ export class WorkspaceJoinRequestItemDto {
   id: string;
   userId: string;
   username: string;
+  fullName: string;
   email: string;
   status: string;
   createdAt: Date;

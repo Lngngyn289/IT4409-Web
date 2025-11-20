@@ -174,7 +174,8 @@ export class WorkspaceService {
     return {
       members: members.map((m) => ({
         id: m.user.id,
-        name: m.user.username,
+        username: m.user.username,
+        fullName: m.user.fullName,
         email: m.user.email,
         avatarUrl: m.user.avatarUrl ?? undefined,
         role: m.role.name,
@@ -215,6 +216,7 @@ export class WorkspaceService {
         id: r.id,
         userId: r.userId,
         username: r.user.username,
+        fullName: r.user.fullName,
         email: r.user.email,
         status: r.status,
         createdAt: r.createdAt,
