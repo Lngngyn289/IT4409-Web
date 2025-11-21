@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { UploadModule } from './upload/upload.module';
+import { ChannelModule } from './channel/channel.module';
 
 @Module({
   controllers: [AppController],
@@ -20,6 +21,7 @@ import { UploadModule } from './upload/upload.module';
     }),
     WorkspaceModule,
     UploadModule,
+    ChannelModule,
   ],
 })
 export class AppModule {}
