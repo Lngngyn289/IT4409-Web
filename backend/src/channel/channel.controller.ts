@@ -15,11 +15,14 @@ import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dtos/create-channel.dto';
 import { UpdateChannelDto } from './dtos/update-channel.dto';
 import { AddChannelMemberDto } from './dtos/add-member.dto';
+import { JoinChannelDto } from './dtos/join-channel.dto';
+import { ReviewJoinRequestDto } from './dtos/review-join-request.dto';
 import {
   ChannelResponseDto,
   ChannelListItemDto,
 } from './dtos/channel-response.dto';
 import { ChannelMemberResponseDto } from './dtos/channel-member-response.dto';
+import { ChannelJoinRequestResponseDto } from './dtos/channel-join-request-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('channels')
@@ -295,6 +298,120 @@ export class ChannelController {
   ): Promise<ChannelMemberResponseDto[]> {
     const userId = req.user.id;
     return this.channelService.getMembers(userId, channelId);
+  }
+
+  /**
+   * POST /api/channels/join
+   * Join channel bằng join code
+   * Public: Join thẳng, Private: Tạo request
+   */
+  @Post('join')
+  @ApiOperation({
+    summary: 'Join channel bằng join code',
+    description:
+      'Public channel: Join thẳng. Private channel: Tạo join request, chờ admin duyệt.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Join thành công hoặc request đã được tạo',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        channelId: { type: 'string' },
+        requestId: { type: 'string' },
+      },
+      required: ['message'],
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Đã là member hoặc đã gửi request trước đó',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Không tìm thấy channel với code này',
+  })
+  async joinChannelByCode(
+    @Req() req: any,
+    @Body() joinChannelDto: JoinChannelDto,
+  ): Promise<{ message: string; channelId?: string; requestId?: string }> {
+    const userId = req.user.id;
+    return this.channelService.joinChannelByCode(userId, joinChannelDto);
+  }
+
+  /**
+   * GET /api/channels/:channelId/join-requests
+   * Xem danh sách join requests
+   * Chỉ Channel Admin hoặc Workspace Admin
+   */
+  @Get(':channelId/join-requests')
+  @ApiOperation({
+    summary: 'Xem danh sách join requests của channel',
+    description: 'Chỉ Channel Admin hoặc Workspace Admin mới có quyền',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách join requests',
+    type: [ChannelJoinRequestResponseDto],
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Không có quyền (không phải admin)',
+  })
+  async getJoinRequests(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+  ): Promise<ChannelJoinRequestResponseDto[]> {
+    const userId = req.user.id;
+    return this.channelService.getJoinRequests(userId, channelId);
+  }
+
+  /**
+   * PATCH /api/channels/:channelId/join-requests/:requestId
+   * Duyệt hoặc từ chối join request
+   * Chỉ Channel Admin hoặc Workspace Admin
+   */
+  @Patch(':channelId/join-requests/:requestId')
+  @ApiOperation({
+    summary: 'Duyệt hoặc từ chối join request',
+    description: 'Chỉ Channel Admin hoặc Workspace Admin mới có quyền',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Request đã được xử lý',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Request đã được xử lý trước đó',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Không có quyền (không phải admin)',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Không tìm thấy request',
+  })
+  async reviewJoinRequest(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Param('requestId') requestId: string,
+    @Body() reviewDto: ReviewJoinRequestDto,
+  ): Promise<{ message: string }> {
+    const userId = req.user.id;
+    return this.channelService.reviewJoinRequest(
+      userId,
+      channelId,
+      requestId,
+      reviewDto,
+    );
   }
 }
 
