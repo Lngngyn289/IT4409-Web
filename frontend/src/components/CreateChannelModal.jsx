@@ -11,7 +11,6 @@ function CreateChannelModal({ workspaceId, onClose, onSuccess }) {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const { authFetch } = useAuth(); // Get authFetch
 
   const handleChange = (field) => (event) => {
     setFormState((prev) => ({ ...prev, [field]: event.target.value }));

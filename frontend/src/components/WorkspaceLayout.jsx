@@ -10,7 +10,6 @@ function WorkspaceLayout() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { authFetch } = useAuth(); // Use authFetch from useAuth
   const [workspace, setWorkspace] = useState(null);
   const [channels, setChannels] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
