@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { addChannelMember, getWorkspaceMembers } from "../api";
+import { useState, useEffect, useCallback } from "react";
+import { addChannelMember, getWorkspaceMembers, getChannelMembers } from "../api";
 import useAuth from "../hooks/useAuth";
 
 function AddChannelMemberModal({ workspaceId, channelId, onClose, onSuccess }) {
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState([]);
+  const [channelMembers, setChannelMembers] = useState(new Set());
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -12,41 +13,55 @@ function AddChannelMemberModal({ workspaceId, channelId, onClose, onSuccess }) {
   const [successMsg, setSuccessMsg] = useState("");
   const { authFetch } = useAuth(); // Get authFetch
 
-  useEffect(() => {
-    fetchMembers();
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (!query) {
-      setFilteredMembers([]);
-      return;
-    }
-    const lowerQuery = query.toLowerCase();
-    const filtered = members.filter(
-      (member) =>
-        member.user.fullName.toLowerCase().includes(lowerQuery) ||
-        member.user.email.toLowerCase().includes(lowerQuery)
-    );
-    setFilteredMembers(filtered);
-  }, [query, members]);
-
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Pass authFetch
-      const data = await getWorkspaceMembers(workspaceId, authFetch);
-      // data is WorkspaceMemberListResponseDto which contains { items: [...], meta: {...} } or just array?
-      // Let's assume it returns array or object with items.
-      // Based on controller it returns WorkspaceMemberListResponseDto.
-      // Let's check DTO structure if possible, but generally:
-      const items = data.items || data; 
+      // Use authFetch via helper functions
+      const [workspaceData, channelData] = await Promise.all([
+        getWorkspaceMembers(workspaceId, authFetch),
+        getChannelMembers(channelId, authFetch),
+      ]);
+
+      // data is WorkspaceMemberListResponseDto { members: [...], totalCount, myRole }
+      const items = workspaceData.members || workspaceData.items || [];
       setMembers(Array.isArray(items) ? items : []);
+
+      // Store existing channel member IDs in a Set for fast lookup
+      // channelData might be array of members directly
+      const existingMemberIds = new Set(
+        (Array.isArray(channelData) ? channelData : []).map((m) => m.userId)
+      );
+      setChannelMembers(existingMemberIds);
     } catch (err) {
-      console.error("Failed to fetch workspace members", err);
+      console.error("Failed to fetch members", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [workspaceId, channelId, authFetch]);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
+  // Filter members based on search query and exclude existing channel members
+  useEffect(() => {
+    if (!query.trim()) {
+      setFilteredMembers([]);
+      return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const filtered = members
+      .filter((member) => !channelMembers.has(member.userId)) // Filter out existing members
+      .filter(
+        (member) =>
+          member.fullName?.toLowerCase().includes(lowerQuery) ||
+          member.username?.toLowerCase().includes(lowerQuery) ||
+          member.email?.toLowerCase().includes(lowerQuery)
+      );
+
+    setFilteredMembers(filtered);
+  }, [query, members, channelMembers]);
 
   const handleAddMember = async (userId, email) => {
     setIsSubmitting(true);
@@ -92,7 +107,7 @@ function AddChannelMemberModal({ workspaceId, channelId, onClose, onSuccess }) {
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-            aria-label="Close"
+            aria-label="Close modal"
           >
             <svg
               className="h-5 w-5"
@@ -177,11 +192,11 @@ function AddChannelMemberModal({ workspaceId, channelId, onClose, onSuccess }) {
                 >
                     <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500 text-xs font-medium text-white">
-                        {member.user.fullName.charAt(0).toUpperCase()}
+                        {(member.fullName?.[0] || member.username?.[0] || "?").toUpperCase()}
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-white">{member.user.fullName}</p>
-                        <p className="text-xs text-slate-400">{member.user.email}</p>
+                        <p className="text-sm font-medium text-white">{member.fullName || member.username}</p>
+                        <p className="text-xs text-slate-400">{member.email}</p>
                     </div>
                     </div>
                     <button

@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { updateChannel } from "../api";
+import { updateChannel, deleteChannel } from "../api";
 import useAuth from "../hooks/useAuth";
 
-function UpdateChannelModal({ channel, onClose, onSuccess }) {
+function UpdateChannelModal({ channel, onClose, onSuccess, onDelete }) {
   const [formState, setFormState] = useState({
     name: "",
     description: "",
@@ -51,6 +51,29 @@ function UpdateChannelModal({ channel, onClose, onSuccess }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        "Bạn có chắc chắn muốn xóa channel này không? Hành động này không thể hoàn tác."
+      )
+    ) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await deleteChannel(channel.id, authFetch);
+      if (onDelete) {
+        onDelete(channel.id);
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      setError(err.message || "Không thể xóa channel");
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
       <div
@@ -68,7 +91,7 @@ function UpdateChannelModal({ channel, onClose, onSuccess }) {
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-            aria-label="Close"
+            aria-label="Close modal"
           >
             <svg
               className="h-5 w-5"
@@ -129,28 +152,37 @@ function UpdateChannelModal({ channel, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex justify-between pt-2">
             <button
               type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-slate-700 px-6 py-3 font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
+              onClick={handleDelete}
+              className="rounded-xl px-4 py-3 text-sm font-medium text-red-400 hover:text-red-300 focus:outline-none"
               disabled={isLoading}
             >
-              Hủy
+              Xóa Channel
             </button>
-            <button
-              type="submit"
-              className="group relative flex-1 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
-              disabled={isLoading}
-            >
-              <span className="absolute inset-0 opacity-0 blur-xl transition duration-500 group-hover:opacity-60">
-                <span className="block h-full w-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400" />
-              </span>
-              <span className="relative">
-                {isLoading ? "Đang lưu..." : "Lưu thay đổi"}
-              </span>
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-slate-700 px-6 py-3 font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
+                disabled={isLoading}
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isLoading}
+              >
+                <span className="absolute inset-0 opacity-0 blur-xl transition duration-500 group-hover:opacity-60">
+                  <span className="block h-full w-full bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400" />
+                </span>
+                <span className="relative">
+                  {isLoading ? "Đang lưu..." : "Lưu thay đổi"}
+                </span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

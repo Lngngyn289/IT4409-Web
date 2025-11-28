@@ -112,6 +112,54 @@ export function getChannelMembers(channelId, fetcher = request) {
   return fetcher(`/api/channels/${channelId}/members`);
 }
 
+export function removeChannelMember(channelId, memberId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/members/${memberId}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteChannel(channelId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getChannelJoinRequests(channelId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/join-requests`);
+}
+
+export function approveChannelJoinRequest(channelId, requestId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/join-requests/${requestId}/approve`, {
+    method: "PATCH",
+  });
+}
+
+export function rejectChannelJoinRequest(channelId, requestId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/join-requests/${requestId}/reject`, {
+    method: "PATCH",
+  });
+}
+
 export function getWorkspaceMembers(workspaceId, fetcher = request) {
   return fetcher(`/api/workspaces/${workspaceId}/members`);
+}
+
+export function joinChannelByCode(code, fetcher = request) {
+  return fetcher("/api/channels/join", {
+    method: "POST",
+    body: JSON.stringify({ joinCode: code }),
+  });
+}
+
+export function leaveChannel(channelId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/members/me`, {
+    method: "DELETE",
+  });
+}
+
+export function updateChannelMemberRole(channelId, memberId, role, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/members/${memberId}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({ newRole: role }),
+  });
 }

@@ -5,6 +5,7 @@ import useAuth from "../hooks/useAuth";
 import { useToast } from "../contexts/ToastContext";
 import UserMenu from "./UserMenu";
 import CreateChannelModal from "./CreateChannelModal";
+import JoinChannelModal from "./JoinChannelModal";
 
 function WorkspaceLayout() {
   const { workspaceId } = useParams();
@@ -17,15 +18,18 @@ function WorkspaceLayout() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [isJoinChannelOpen, setIsJoinChannelOpen] = useState(false);
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, [workspaceId]);
 
-  const fetchData = async () => {
-    setIsLoading(true);
-    setError(null);
+  const fetchData = async (silent = false) => {
+    if (!silent) {
+        setIsLoading(true);
+        setError(null);
+    }
     try {
       // Use authFetch instead of request directly
       const [workspaceData, channelsData] = await Promise.all([
@@ -36,13 +40,13 @@ function WorkspaceLayout() {
       setChannels(channelsData);
     } catch (err) {
       console.error("Failed to fetch workspace data", err);
-      setError(err.message || "Có lỗi xảy ra khi tải dữ liệu");
+      if (!silent) setError(err.message || "Có lỗi xảy ra khi tải dữ liệu");
       // If 403 or 404, maybe redirect to home
       if (err.status === 403 || err.status === 404) {
           navigate("/workspaces");
       }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -166,27 +170,38 @@ function WorkspaceLayout() {
               </svg>
               Channels
             </button>
-            {(workspace.myRole === 'WORKSPACE_ADMIN' || workspace.myRole === 'WORKSPACE_PRIVILEGE_MEMBER') && (
-              <button
-                onClick={() => setIsCreateChannelOpen(true)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
-                title="Create Channel"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+            <div className="flex gap-1">
+                <button
+                    onClick={() => setIsJoinChannelOpen(true)}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                    title="Join Channel"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
-            )}
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    </svg>
+                </button>
+                {(workspace.myRole === 'WORKSPACE_ADMIN' || workspace.myRole === 'WORKSPACE_PRIVILEGE_MEMBER') && (
+                <button
+                    onClick={() => setIsCreateChannelOpen(true)}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                    title="Create Channel"
+                >
+                    <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    >
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                    />
+                    </svg>
+                </button>
+                )}
+            </div>
           </div>
 
           {/* Channel Items */}
@@ -223,7 +238,7 @@ function WorkspaceLayout() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
-         <Outlet context={{ workspace }} />
+         <Outlet context={{ workspace, refreshChannels: () => fetchData(true) }} />
       </main>
 
       {/* Create Channel Modal */}
@@ -232,6 +247,16 @@ function WorkspaceLayout() {
           workspaceId={workspaceId}
           onClose={() => setIsCreateChannelOpen(false)}
           onSuccess={handleCreateChannelSuccess}
+        />
+      )}
+
+      {isJoinChannelOpen && (
+        <JoinChannelModal
+          onClose={() => setIsJoinChannelOpen(false)}
+          onSuccess={() => {
+              // Refresh channel list silently
+              fetchData(true);
+          }}
         />
       )}
     </div>
