@@ -1,0 +1,667 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import useAuth from "../hooks/useAuth";
+import Toast from "./Toast";
+import VideoGrid from "./VideoGrid";
+import MeetingControls from "./MeetingControls";
+import MeetingParticipants from "./MeetingParticipants";
+
+function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
+  const { authFetch } = useAuth();
+  const [meeting, setMeeting] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isInMeeting, setIsInMeeting] = useState(false);
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [toast, setToast] = useState(null);
+  const [showParticipants, setShowParticipants] = useState(false);
+
+  // Daily.co state
+  const callObjectRef = useRef(null);
+  const [participants, setParticipants] = useState({});
+  const [localParticipant, setLocalParticipant] = useState(null);
+  const [screenShare, setScreenShare] = useState(null);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  const intervalRef = useRef(null);
+
+  const showToast = useCallback((message, type = "info") => {
+    setToast({ message, type });
+  }, []);
+
+  const closeToast = useCallback(() => {
+    setToast(null);
+  }, []);
+
+  const fetchMeetingStatus = useCallback(
+    async (showLoadingState = true) => {
+      if (showLoadingState) {
+        setIsLoading(true);
+      }
+      try {
+        const data = await authFetch(`/api/channels/${channelId}/meetings`);
+        setMeeting(data);
+      } catch {
+        setMeeting(null);
+      } finally {
+        if (showLoadingState) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [authFetch, channelId]
+  );
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchMeetingStatus(true);
+  }, [fetchMeetingStatus]);
+
+  // Polling interval - only when not in meeting
+  useEffect(() => {
+    if (!isInMeeting) {
+      intervalRef.current = setInterval(() => {
+        fetchMeetingStatus(false);
+      }, 10000);
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isInMeeting, fetchMeetingStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (callObjectRef.current) {
+        callObjectRef.current.destroy();
+      }
+    };
+  }, []);
+
+  const handleStartMeeting = async () => {
+    setIsStarting(true);
+    try {
+      const data = await authFetch(
+        `/api/channels/${channelId}/meetings/start`,
+        {
+          method: "POST",
+          body: JSON.stringify({ title: meetingTitle || undefined }),
+        }
+      );
+      setMeeting(data);
+      setMeetingTitle("");
+      showToast(
+        "Meeting started successfully! Click 'Join Meeting' to enter.",
+        "success"
+      );
+    } catch (err) {
+      showToast(err.message || "Failed to start meeting", "error");
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const handleJoinMeeting = async () => {
+    setIsJoining(true);
+    try {
+      // Wait for Daily.co SDK to load
+      let attempts = 0;
+      while (!window.DailyIframe && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (!window.DailyIframe) {
+        throw new Error("Daily.co SDK failed to load. Please refresh the page.");
+      }
+
+      // Request media permissions before joining
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        // Stop the test stream
+        stream.getTracks().forEach(track => track.stop());
+      } catch (mediaError) {
+        console.warn("Media permission warning:", mediaError);
+        showToast("Camera/microphone access denied. You can enable them later.", "warning");
+      }
+
+      await authFetch(`/api/channels/${channelId}/meetings/join`, {
+        method: "POST",
+      });
+
+      const tokenData = await authFetch(
+        `/api/channels/${channelId}/meetings/token`
+      );
+
+      // Create Daily call object
+      const callObject = window.DailyIframe.createCallObject();
+
+      callObjectRef.current = callObject;
+
+      // Set up event listeners
+      setupDailyListeners(callObject);
+
+      // Join the call
+      await callObject.join({
+        url: tokenData.roomUrl,
+        token: tokenData.token,
+      });
+
+      // Sync initial state with Daily.co
+      const localP = callObject.participants().local;
+      if (localP) {
+        setIsMicOn(localP.audio);
+        setIsCameraOn(localP.video);
+      }
+
+      setIsInMeeting(true);
+      if (onMeetingStateChange) {
+        onMeetingStateChange(true);
+      }
+      showToast("Joined meeting successfully!", "success");
+    } catch (err) {
+      console.error("Join meeting error:", err);
+      showToast(err.message || "Failed to join meeting", "error");
+      setIsInMeeting(false);
+      if (onMeetingStateChange) {
+        onMeetingStateChange(false);
+      }
+      if (callObjectRef.current) {
+        callObjectRef.current.destroy();
+        callObjectRef.current = null;
+      }
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const setupDailyListeners = (callObject) => {
+    callObject
+      .on("joined-meeting", () => {
+        console.log("Joined meeting event");
+        updateParticipants();
+      })
+      .on("left-meeting", handleLeaveMeetingUI)
+      .on("participant-joined", (event) => {
+        console.log("Participant joined:", event);
+        updateParticipants();
+      })
+      .on("participant-updated", (event) => {
+        console.log("Participant updated:", event);
+        updateParticipants();
+
+        // Update local mic/camera state if it's the local participant
+        if (event.participant.local) {
+          if (typeof event.participant.audio === 'boolean') {
+            setIsMicOn(event.participant.audio);
+          }
+          if (typeof event.participant.video === 'boolean') {
+            setIsCameraOn(event.participant.video);
+          }
+        }
+      })
+      .on("participant-left", (event) => {
+        console.log("Participant left:", event);
+        updateParticipants();
+      })
+      .on("track-started", (event) => {
+        console.log("Track started:", event);
+        updateParticipants();
+      })
+      .on("track-stopped", (event) => {
+        console.log("Track stopped:", event);
+        updateParticipants();
+      })
+      .on("error", (error) => {
+        console.error("Daily error:", error);
+        showToast("Meeting error occurred", "error");
+      });
+  };
+
+  const updateParticipants = () => {
+    if (!callObjectRef.current) return;
+
+    const allParticipants = callObjectRef.current.participants();
+    console.log("All participants:", allParticipants);
+
+    const localP = allParticipants.local;
+    console.log("Local participant:", localP);
+
+    const remoteParticipants = {};
+    let screenShareParticipant = null;
+
+    Object.entries(allParticipants).forEach(([id, participant]) => {
+      if (id === "local") return;
+
+      if (participant.screen) {
+        screenShareParticipant = participant;
+      } else {
+        remoteParticipants[id] = participant;
+      }
+    });
+
+    console.log("Remote participants:", remoteParticipants);
+
+    setLocalParticipant(localP);
+    setParticipants(remoteParticipants);
+    setScreenShare(screenShareParticipant);
+  };
+
+  const handleToggleMic = async () => {
+    if (!callObjectRef.current) return;
+    try {
+      const newState = !isMicOn;
+      await callObjectRef.current.setLocalAudio(newState);
+
+      // Verify the state was actually changed
+      const localP = callObjectRef.current.participants().local;
+      const actualState = localP?.audio ?? newState;
+      setIsMicOn(actualState);
+      showToast(actualState ? "Microphone on" : "Microphone off", "info");
+    } catch (err) {
+      console.error("Toggle mic error:", err);
+      showToast(err.message || "Failed to toggle microphone. Please check permissions.", "error");
+      // Revert to actual state
+      const localP = callObjectRef.current?.participants().local;
+      if (localP) setIsMicOn(localP.audio);
+    }
+  };
+
+  const handleToggleCamera = async () => {
+    if (!callObjectRef.current) return;
+    try {
+      const newState = !isCameraOn;
+      await callObjectRef.current.setLocalVideo(newState);
+
+      // Verify the state was actually changed
+      const localP = callObjectRef.current.participants().local;
+      const actualState = localP?.video ?? newState;
+      setIsCameraOn(actualState);
+      showToast(actualState ? "Camera on" : "Camera off", "info");
+    } catch (err) {
+      console.error("Toggle camera error:", err);
+      showToast(err.message || "Failed to toggle camera. Please check permissions.", "error");
+      // Revert to actual state
+      const localP = callObjectRef.current?.participants().local;
+      if (localP) setIsCameraOn(localP.video);
+    }
+  };
+
+  const handleToggleScreenShare = async () => {
+    if (!callObjectRef.current) return;
+    try {
+      if (isScreenSharing) {
+        await callObjectRef.current.stopScreenShare();
+        setIsScreenSharing(false);
+        showToast("Screen sharing stopped", "info");
+      } else {
+        await callObjectRef.current.startScreenShare();
+        setIsScreenSharing(true);
+        showToast("Screen sharing started", "success");
+      }
+    } catch (err) {
+      console.error("Toggle screen share error:", err);
+      if (err.errorMsg?.includes("permission")) {
+        showToast("Screen sharing permission denied", "error");
+      } else {
+        showToast(err.message || "Failed to toggle screen share", "error");
+      }
+      // Revert state on error
+      setIsScreenSharing(false);
+    }
+  };
+
+  const handleLeaveMeeting = async () => {
+    try {
+      if (callObjectRef.current) {
+        await callObjectRef.current.leave();
+      }
+      await authFetch(`/api/channels/${channelId}/meetings/leave`, {
+        method: "POST",
+      });
+      handleLeaveMeetingUI();
+      await fetchMeetingStatus();
+      showToast("Left meeting successfully", "info");
+    } catch (err) {
+      showToast(err.message || "Failed to leave meeting", "error");
+    }
+  };
+
+  const handleLeaveMeetingUI = () => {
+    if (callObjectRef.current) {
+      callObjectRef.current.destroy();
+      callObjectRef.current = null;
+    }
+    setIsInMeeting(false);
+    setParticipants({});
+    setLocalParticipant(null);
+    setScreenShare(null);
+    setIsMicOn(true);
+    setIsCameraOn(true);
+    setIsScreenSharing(false);
+    if (onMeetingStateChange) {
+      onMeetingStateChange(false);
+    }
+  };
+
+  const handleEndMeeting = async () => {
+    if (
+      !window.confirm(
+        "Are you sure you want to end this meeting for everyone?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await authFetch(`/api/channels/${channelId}/meetings/end`, {
+        method: "PATCH",
+      });
+      handleLeaveMeetingUI();
+      await fetchMeetingStatus();
+      showToast("Meeting ended successfully", "success");
+    } catch (err) {
+      showToast(err.message || "Failed to end meeting", "error");
+    }
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  if (isLoading && !meeting) {
+    return (
+      <>
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
+        </div>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={closeToast}
+          />
+        )}
+      </>
+    );
+  }
+
+  // If in meeting, show custom video interface
+  if (isInMeeting) {
+    const participantCount =
+      Object.keys(participants).length + (localParticipant ? 1 : 0);
+
+    return (
+      <>
+        <div className="flex flex-col h-full bg-gray-900">
+          {/* Header */}
+          <div className="flex items-center justify-between bg-gray-800 text-white px-6 py-3 flex-shrink-0 border-b border-gray-700">
+            <div className="flex items-center gap-4">
+              <h3 className="font-semibold text-lg">
+                {meeting?.title || "Channel Meeting"}
+              </h3>
+              <span className="text-sm text-gray-300">
+                {participantCount} participant{participantCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="flex gap-2 items-center">
+              {/* Participants toggle */}
+              <button
+                onClick={() => setShowParticipants(!showParticipants)}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                title="Toggle participants"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  />
+                </svg>
+              </button>
+
+              {/* End meeting (admin only) */}
+              {isChannelAdmin && (
+                <button
+                  onClick={handleEndMeeting}
+                  className="px-4 py-2 bg-red-800 hover:bg-red-900 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  End Meeting
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Main content area */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Video grid */}
+            <div className="flex-1 bg-gray-900">
+              <VideoGrid
+                participants={participants}
+                localParticipant={localParticipant}
+                screenShare={screenShare}
+              />
+            </div>
+
+            {/* Participants sidebar */}
+            {showParticipants && (
+              <MeetingParticipants
+                participants={participants}
+                localParticipant={localParticipant}
+                onClose={() => setShowParticipants(false)}
+              />
+            )}
+          </div>
+
+          {/* Controls */}
+          <MeetingControls
+            onToggleMic={handleToggleMic}
+            onToggleCamera={handleToggleCamera}
+            onToggleScreenShare={handleToggleScreenShare}
+            onLeave={handleLeaveMeeting}
+            isMicOn={isMicOn}
+            isCameraOn={isCameraOn}
+            isScreenSharing={isScreenSharing}
+          />
+        </div>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={closeToast}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        Video Meeting
+      </h3>
+
+      {!meeting ? (
+        <div className="bg-gray-50 rounded-lg p-8">
+          <div className="text-center mb-6">
+            <svg
+              className="mx-auto h-16 w-16 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            <h4 className="mt-4 text-lg font-medium text-gray-900">
+              No active meeting
+            </h4>
+            <p className="mt-1 text-sm text-gray-500">
+              {isChannelAdmin
+                ? "Start a video meeting to connect with your team"
+                : "No meeting is currently in progress"}
+            </p>
+          </div>
+
+          {isChannelAdmin && (
+            <div className="max-w-md mx-auto">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Meeting Title (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={meetingTitle}
+                  onChange={(e) => setMeetingTitle(e.target.value)}
+                  placeholder="e.g., Daily Standup, Sprint Planning"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={handleStartMeeting}
+                disabled={isStarting}
+                className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+                {isStarting ? "Starting..." : "Start Meeting"}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-green-100 rounded-full p-3">
+                <svg
+                  className="h-6 w-6 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900">
+                  {meeting.title || "Channel Meeting"}
+                </h4>
+                <p className="text-sm text-gray-500">
+                  Started at {formatDate(meeting.startedAt)}
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+              <span className="h-2 w-2 bg-green-600 rounded-full animate-pulse"></span>
+              Live
+            </span>
+          </div>
+
+          <div className="mb-4">
+            <p className="text-sm text-gray-600 mb-2">Active Participants:</p>
+            <div className="flex flex-wrap gap-2">
+              {meeting.participants
+                ?.filter((p) => !p.leftAt)
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1"
+                  >
+                    <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm font-medium text-gray-700">
+                      {p.User?.fullName || "Unknown"}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            {(!meeting.participants ||
+              meeting.participants.filter((p) => !p.leftAt).length === 0) && (
+              <p className="text-sm text-gray-400">No one has joined yet</p>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleJoinMeeting}
+              disabled={isJoining}
+              className="flex-1 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                />
+              </svg>
+              {isJoining ? "Joining..." : "Join Meeting"}
+            </button>
+
+            {isChannelAdmin && (
+              <button
+                onClick={handleEndMeeting}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold text-white"
+              >
+                End Meeting
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={closeToast} />
+      )}
+    </div>
+  );
+}
+
+export default ChannelMeeting;

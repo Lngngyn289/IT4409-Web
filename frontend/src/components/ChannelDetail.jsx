@@ -15,6 +15,8 @@ import UpdateChannelModal from "./UpdateChannelModal";
 import AddChannelMemberModal from "./AddChannelMemberModal";
 import ChannelMembersModal from "./ChannelMembersModal";
 import ChannelJoinRequestsModal from "./ChannelJoinRequestsModal";
+import ChannelFiles from "./ChannelFiles";
+import ChannelMeeting from "./ChannelMeeting";
 
 function ChannelDetail() {
   const { channelId } = useParams();
@@ -45,6 +47,8 @@ function ChannelDetail() {
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("chat");
+  const [isInMeeting, setIsInMeeting] = useState(false); // Track if user is in a meeting
 
   const fetchChannelData = useCallback(
     async (silent = false) => {
@@ -209,7 +213,8 @@ function ChannelDetail() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
+      {/* Header - Hide when in meeting */}
+      {!isInMeeting && (
       <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
         <div>
           <div className="flex items-center gap-2">
@@ -296,94 +301,80 @@ function ChannelDetail() {
           </button>
         </div>
       </div>
+      )}
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto flex max-w-4xl flex-col gap-4">
-          <form
-            onSubmit={handleCreatePost}
-            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+      {/* Tabs */}
+      {!isInMeeting && (
+      <div className="border-b border-gray-200">
+        <nav className="flex -mb-px px-6">
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "chat"
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
           >
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 uppercase">
-                {currentUser?.fullName
-                  ? currentUser.fullName.slice(0, 2)
-                  : currentUser?.username?.slice(0, 2)}
-              </div>
-              <div className="flex-1 space-y-3">
-                <textarea
-                  value={postContent}
-                  onChange={(e) => setPostContent(e.target.value)}
-                  placeholder={`Chia sẻ với #${channel.name}...`}
-                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  rows={3}
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
-                    Bài đăng sẽ hiển thị cho tất cả thành viên trong channel.
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={isPosting}
-                    className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
-                  >
-                    {isPosting ? "Đang gửi..." : "Đăng bài"}
-                  </button>
-                </div>
-              </div>
+            💬 Chat
+          </button>
+          <button
+            onClick={() => setActiveTab("meeting")}
+            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "meeting"
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            🎥 Meeting
+          </button>
+          <button
+            onClick={() => setActiveTab("files")}
+            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "files"
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            📁 Files & Materials
+          </button>
+        </nav>
+      </div>
+      )}
+
+      {/* Main Content - Keep all tabs mounted to prevent unmounting */}
+      <div className="flex-1 overflow-hidden relative">
+        {/* Chat Tab */}
+        <div
+          className="h-full overflow-y-auto absolute inset-0"
+          style={{ display: activeTab === "chat" && !isInMeeting ? "block" : "none" }}
+        >
+          <div className="flex h-full items-center justify-center p-6 text-gray-400">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900">Welcome to #{channel.name}!</h3>
+              <p>This is the start of the {channel.name} channel.</p>
+              <p className="mt-2 text-sm text-gray-500">{members.length} members</p>
             </div>
-          </form>
-
-          <div className="rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <h3 className="text-sm font-semibold text-gray-900">Danh sách bài đăng</h3>
-              {isPostsLoading && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
-                  Đang tải...
-                </div>
-              )}
-            </div>
-
-            {posts.length === 0 && !isPostsLoading && (
-              <div className="px-4 py-6 text-center text-sm text-gray-500">
-                Chưa có bài đăng nào trong channel này.
-              </div>
-            )}
-
-            {posts.length > 0 && (
-              <div className="divide-y divide-gray-100">
-                {posts.map((post) => (
-                  <button
-                    key={post.id}
-                    onClick={() => openPostDetail(post.id)}
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-gray-50"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 uppercase">
-                      {post.author?.fullName
-                        ? post.author.fullName.slice(0, 2)
-                        : post.author?.username?.slice(0, 2) || "??"}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900">
-                          {post.author?.fullName || post.author?.username || "Ẩn danh"}
-                        </p>
-                        {post.createdAt && (
-                          <span className="text-xs text-gray-500">
-                            {new Date(post.createdAt).toLocaleString("vi-VN")}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-gray-800">
-                        {post.content}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+        </div>
+
+        {/* Meeting Tab - Always mounted to keep video state */}
+        <div
+          className="h-full absolute inset-0"
+          style={{ display: activeTab === "meeting" || isInMeeting ? "block" : "none" }}
+        >
+          <ChannelMeeting
+            channelId={channelId}
+            isChannelAdmin={isChannelAdmin}
+            onMeetingStateChange={setIsInMeeting}
+          />
+        </div>
+
+        {/* Files Tab */}
+        <div
+          className="h-full overflow-y-auto absolute inset-0"
+          style={{ display: activeTab === "files" && !isInMeeting ? "block" : "none" }}
+        >
+          <ChannelFiles channelId={channelId} isChannelAdmin={isChannelAdmin} />
         </div>
       </div>
 

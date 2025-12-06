@@ -107,7 +107,7 @@ function Profile() {
 
     try {
       const formData = new FormData();
-      formData.append("file", avatarFile); // Backend expects 'file' not 'avatar'
+      formData.append("file", avatarFile); 
 
       const updatedProfile = await authFetch("/api/users/me/avatar", {
         method: "PATCH",
@@ -115,7 +115,7 @@ function Profile() {
       });
 
       setProfile(updatedProfile);
-      updateCurrentUser(updatedProfile); // Update context
+      updateCurrentUser(updatedProfile); 
       setAvatarFile(null);
       setAvatarPreview(null);
       setSuccess("Cập nhật avatar thành công!");
