@@ -38,6 +38,7 @@ export class SendDirectMessageDto {
     required: false,
   })
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   attachmentUrls?: string[];
 }
