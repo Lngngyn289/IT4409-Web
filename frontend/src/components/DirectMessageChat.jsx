@@ -5,6 +5,7 @@ import { useDMSocket } from "../hooks/useDMSocket";
 import { getDirectMessages } from "../api";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
+import ConfirmationModal from "./ConfirmationModal";
 
 function DirectMessageChat() {
   const { workspaceId, conversationId } = useParams();
@@ -18,6 +19,7 @@ function DirectMessageChat() {
   const [replyTo, setReplyTo] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, messageId: null });
 
   const {
     isConnected,
@@ -131,8 +133,13 @@ function DirectMessageChat() {
 
   // Handle delete message
   const handleDelete = (messageId) => {
-    if (window.confirm("Bạn có chắc muốn xóa tin nhắn này?")) {
-      deleteMessage(messageId);
+    setDeleteConfirmModal({ isOpen: true, messageId });
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmModal.messageId) {
+      deleteMessage(deleteConfirmModal.messageId);
+      setDeleteConfirmModal({ isOpen: false, messageId: null });
     }
   };
 
@@ -331,6 +338,18 @@ function DirectMessageChat() {
         members={[]}
         disabled={!isConnected}
         placeholder={otherUser ? `Nhắn tin cho ${otherUser.fullName || otherUser.username}...` : "Nhập tin nhắn..."}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteConfirmModal.isOpen}
+        onClose={() => setDeleteConfirmModal({ isOpen: false, messageId: null })}
+        onConfirm={confirmDelete}
+        title="Xóa tin nhắn"
+        message="Bạn có chắc muốn xóa tin nhắn này? Hành động này không thể hoàn tác."
+        confirmText="Xóa"
+        cancelText="Hủy"
+        variant="danger"
       />
     </div>
   );
