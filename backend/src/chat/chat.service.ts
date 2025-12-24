@@ -18,6 +18,14 @@ import {
   AttachmentDto,
   ReplyToMessageDto,
 } from './dtos/message-response.dto';
+import {
+  DirectConversationListResponseDto,
+  DirectConversationItemDto,
+  DirectConversationParticipantDto,
+  LastMessageDto,
+  CreateDirectConversationDto,
+} from './dtos/direct-conversation-response.dto';
+import { SendDirectMessageDto } from './dtos/send-direct-message.dto';
 import { ROLES } from '../common/constants/roles.constant';
 
 @Injectable()
@@ -131,7 +139,9 @@ export class ChatService {
     if (message.replyTo) {
       replyTo = {
         id: message.replyTo.id,
-        content: message.replyTo.isDeleted ? undefined : message.replyTo.content ?? undefined,
+        content: message.replyTo.isDeleted
+          ? undefined
+          : (message.replyTo.content ?? undefined),
         sender: this.mapUserToSenderDto(message.replyTo.sender),
         isDeleted: message.replyTo.isDeleted,
       };
@@ -140,12 +150,14 @@ export class ChatService {
     return {
       id: message.id,
       conversationId: message.conversationId,
-      content: message.isDeleted ? undefined : message.content ?? undefined,
+      content: message.isDeleted ? undefined : (message.content ?? undefined),
       sender: this.mapUserToSenderDto(message.sender),
       replyTo,
       mentions: this.mapMentions(message.mentions || []),
       reactions: this.mapReactions(message.reactable?.reactions || []),
-      attachments: this.mapAttachments(message.reactable?.fileAttachments || []),
+      attachments: this.mapAttachments(
+        message.reactable?.fileAttachments || [],
+      ),
       isDeleted: message.isDeleted,
       createdAt: message.createdAt,
       updatedAt: message.updatedAt,
@@ -207,14 +219,15 @@ export class ChatService {
       });
     } else {
       // Kiểm tra và thêm user vào conversation nếu chưa có
-      const existingParticipant = await this.prisma.conversationParticipant.findUnique({
-        where: {
-          conversationId_userId: {
-            conversationId: conversation.id,
-            userId,
+      const existingParticipant =
+        await this.prisma.conversationParticipant.findUnique({
+          where: {
+            conversationId_userId: {
+              conversationId: conversation.id,
+              userId,
+            },
           },
-        },
-      });
+        });
 
       if (!existingParticipant) {
         await this.prisma.conversationParticipant.create({
@@ -454,7 +467,6 @@ export class ChatService {
     const limit = query.limit ?? 50;
     const skip = (page - 1) * limit;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereCondition: any = {
       conversationId: conversation.id,
     };
@@ -582,7 +594,7 @@ export class ChatService {
     // 3. Kiểm tra quyền xóa
     // Chỉ người gửi hoặc Channel Admin mới được xóa
     const isOwner = message.senderId === userId;
-    
+
     if (!isOwner) {
       // Kiểm tra có phải Channel Admin không
       const channelMembership = await this.prisma.channelMember.findUnique({
@@ -595,21 +607,24 @@ export class ChatService {
         include: { role: true },
       });
 
-      const isChannelAdmin = channelMembership?.role.name === ROLES.CHANNEL_ADMIN;
+      const isChannelAdmin =
+        channelMembership?.role.name === ROLES.CHANNEL_ADMIN;
 
       if (!isChannelAdmin) {
         // Kiểm tra Workspace Admin
-        const workspaceMembership = await this.prisma.workspaceMember.findUnique({
-          where: {
-            workspaceId_userId: {
-              workspaceId: channel.workspaceId,
-              userId,
+        const workspaceMembership =
+          await this.prisma.workspaceMember.findUnique({
+            where: {
+              workspaceId_userId: {
+                workspaceId: channel.workspaceId,
+                userId,
+              },
             },
-          },
-          include: { role: true },
-        });
+            include: { role: true },
+          });
 
-        const isWorkspaceAdmin = workspaceMembership?.role.name === ROLES.WORKSPACE_ADMIN;
+        const isWorkspaceAdmin =
+          workspaceMembership?.role.name === ROLES.WORKSPACE_ADMIN;
 
         if (!isWorkspaceAdmin) {
           throw new ForbiddenException(
@@ -851,9 +866,7 @@ export class ChatService {
     const isMember = await this.isChannelMember(userId, channelId);
 
     if (!isMember) {
-      throw new ForbiddenException(
-        'Bạn phải là thành viên của channel',
-      );
+      throw new ForbiddenException('Bạn phải là thành viên của channel');
     }
 
     // 3. Tìm conversation
@@ -892,5 +905,812 @@ export class ChatService {
       message: 'Đã đánh dấu đọc tất cả tin nhắn',
     };
   }
-}
 
+  // ======================== DIRECT MESSAGING ========================
+
+  /**
+   * Kiểm tra 2 user có cùng workspace không
+   */
+  private async areUsersInSameWorkspace(
+    userId1: string,
+    userId2: string,
+    workspaceId: string,
+  ): Promise<boolean> {
+    const members = await this.prisma.workspaceMember.findMany({
+      where: {
+        workspaceId,
+        userId: { in: [userId1, userId2] },
+      },
+    });
+
+    return members.length === 2;
+  }
+
+  /**
+   * Lấy hoặc tạo direct conversation giữa 2 users trong workspace
+   */
+  async getOrCreateDirectConversation(
+    userId: string,
+    dto: CreateDirectConversationDto,
+  ): Promise<ConversationResponseDto> {
+    const { workspaceId, otherUserId } = dto;
+
+    // 1. Validate: Không thể chat với chính mình
+    if (userId === otherUserId) {
+      throw new BadRequestException('Không thể chat với chính mình');
+    }
+
+    // 2. Kiểm tra cả 2 user đều là member của workspace
+    const inSameWorkspace = await this.areUsersInSameWorkspace(
+      userId,
+      otherUserId,
+      workspaceId,
+    );
+
+    if (!inSameWorkspace) {
+      throw new ForbiddenException(
+        'Cả hai user phải là thành viên của workspace',
+      );
+    }
+
+    // 3. Tìm conversation đã tồn tại (DIRECT type, không có channelId, có 2 participants cụ thể)
+    const existingConversations = await this.prisma.conversation.findMany({
+      where: {
+        type: 'DIRECT',
+        channelId: null,
+      },
+      include: {
+        participants: true,
+      },
+    });
+
+    // Tìm conversation có đúng 2 participants là userId và otherUserId
+    const existingConversation = existingConversations.find((conv) => {
+      const participantIds = conv.participants.map((p) => p.userId);
+      return (
+        participantIds.length === 2 &&
+        participantIds.includes(userId) &&
+        participantIds.includes(otherUserId)
+      );
+    });
+
+    if (existingConversation) {
+      return {
+        id: existingConversation.id,
+        type: existingConversation.type,
+        channelId: undefined,
+        createdAt: existingConversation.createdAt,
+        updatedAt: existingConversation.updatedAt,
+      };
+    }
+
+    // 4. Tạo conversation mới
+    const newConversation = await this.prisma.$transaction(async (tx) => {
+      const conv = await tx.conversation.create({
+        data: {
+          type: 'DIRECT',
+          channelId: null,
+        },
+      });
+
+      // Thêm cả 2 users vào conversation
+      await tx.conversationParticipant.createMany({
+        data: [
+          {
+            conversationId: conv.id,
+            userId,
+          },
+          {
+            conversationId: conv.id,
+            userId: otherUserId,
+          },
+        ],
+      });
+
+      return conv;
+    });
+
+    return {
+      id: newConversation.id,
+      type: newConversation.type,
+      channelId: undefined,
+      createdAt: newConversation.createdAt,
+      updatedAt: newConversation.updatedAt,
+    };
+  }
+
+  /**
+   * Lấy danh sách direct conversations của user trong workspace
+   */
+  async getDirectConversations(
+    userId: string,
+    workspaceId: string,
+  ): Promise<DirectConversationListResponseDto> {
+    // 1. Kiểm tra user là member của workspace
+    const workspaceMembership = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId,
+        },
+      },
+    });
+
+    if (!workspaceMembership) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của workspace này',
+      );
+    }
+
+    // 2. Lấy tất cả conversations mà user tham gia (type = DIRECT)
+    const participations = await this.prisma.conversationParticipant.findMany({
+      where: {
+        userId,
+        conversation: {
+          type: 'DIRECT',
+          channelId: null,
+        },
+      },
+      include: {
+        conversation: {
+          include: {
+            participants: {
+              include: {
+                user: true,
+              },
+            },
+            messages: {
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: 1,
+              include: {
+                sender: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        conversation: {
+          updatedAt: 'desc',
+        },
+      },
+    });
+
+    // 3. Filter: Chỉ lấy conversations có other user cũng trong workspace
+    const workspaceMembers = await this.prisma.workspaceMember.findMany({
+      where: { workspaceId },
+      select: { userId: true },
+    });
+
+    const workspaceMemberIds = new Set(workspaceMembers.map((m) => m.userId));
+
+    const filteredConversations: DirectConversationItemDto[] = [];
+
+    for (const participation of participations) {
+      const conv = participation.conversation;
+
+      // Tìm other participant (không phải current user)
+      const otherParticipant = conv.participants.find(
+        (p) => p.userId !== userId,
+      );
+
+      if (!otherParticipant) continue;
+
+      // Kiểm tra other participant có trong workspace không
+      if (!workspaceMemberIds.has(otherParticipant.userId)) continue;
+
+      // Tính số tin nhắn chưa đọc
+      const unreadCount = await this.prisma.message.count({
+        where: {
+          conversationId: conv.id,
+          createdAt: {
+            gt: participation.lastReadAt ?? new Date(0),
+          },
+          senderId: {
+            not: userId,
+          },
+          isDeleted: false,
+        },
+      });
+
+      // Map last message
+      let lastMessage: LastMessageDto | undefined;
+      if (conv.messages.length > 0) {
+        const msg = conv.messages[0];
+        lastMessage = {
+          id: msg.id,
+          content: msg.isDeleted ? undefined : (msg.content ?? undefined),
+          senderId: msg.senderId,
+          senderName: msg.sender.fullName,
+          isDeleted: msg.isDeleted,
+          createdAt: msg.createdAt,
+        };
+      }
+
+      // Map other participant
+      const otherUser = otherParticipant.user;
+      const otherParticipantDto: DirectConversationParticipantDto = {
+        id: otherUser.id,
+        username: otherUser.username,
+        fullName: otherUser.fullName,
+        email: otherUser.email,
+        avatarUrl: otherUser.avatarUrl ?? undefined,
+      };
+
+      filteredConversations.push({
+        id: conv.id,
+        otherParticipant: otherParticipantDto,
+        lastMessage,
+        unreadCount,
+        updatedAt: conv.updatedAt,
+        createdAt: conv.createdAt,
+      });
+    }
+
+    return {
+      conversations: filteredConversations,
+      total: filteredConversations.length,
+    };
+  }
+
+  /**
+   * Gửi tin nhắn trong direct conversation
+   */
+  async sendDirectMessage(
+    userId: string,
+    dto: SendDirectMessageDto,
+  ): Promise<MessageResponseDto> {
+    const {
+      workspaceId,
+      conversationId,
+      recipientId,
+      content,
+      replyToId,
+      attachmentUrls,
+    } = dto;
+
+    // 1. Validate: Không thể gửi tin cho chính mình
+    if (userId === recipientId) {
+      throw new BadRequestException('Không thể gửi tin nhắn cho chính mình');
+    }
+
+    // 2. Kiểm tra cả 2 user đều là member của workspace
+    const inSameWorkspace = await this.areUsersInSameWorkspace(
+      userId,
+      recipientId,
+      workspaceId,
+    );
+
+    if (!inSameWorkspace) {
+      throw new ForbiddenException(
+        'Cả hai user phải là thành viên của workspace',
+      );
+    }
+
+    // 3. Lấy hoặc tạo conversation
+    let conversation: any;
+    if (conversationId) {
+      // Kiểm tra conversation tồn tại và user có quyền
+      conversation = await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: {
+          participants: true,
+        },
+      });
+
+      if (!conversation) {
+        throw new NotFoundException('Conversation không tồn tại');
+      }
+
+      if (conversation.type !== 'DIRECT') {
+        throw new BadRequestException('Conversation không phải loại DIRECT');
+      }
+
+      const participantIds = conversation.participants.map((p) => p.userId);
+      if (!participantIds.includes(userId)) {
+        throw new ForbiddenException(
+          'Bạn không phải thành viên của conversation này',
+        );
+      }
+    } else {
+      // Tạo mới conversation
+      const convResult = await this.getOrCreateDirectConversation(userId, {
+        workspaceId,
+        otherUserId: recipientId,
+      });
+      conversation = await this.prisma.conversation.findUnique({
+        where: { id: convResult.id },
+        include: {
+          participants: true,
+        },
+      });
+    }
+
+    // 4. Kiểm tra replyToId nếu có
+    if (replyToId) {
+      const replyToMessage = await this.prisma.message.findUnique({
+        where: { id: replyToId },
+      });
+
+      if (
+        !replyToMessage ||
+        replyToMessage.conversationId !== conversation.id
+      ) {
+        throw new BadRequestException('Tin nhắn reply không hợp lệ');
+      }
+    }
+
+    // 5. Tạo tin nhắn với transaction
+    const message = await this.prisma.$transaction(async (tx) => {
+      // Tạo reactable
+      const reactable = await tx.reactable.create({
+        data: {
+          type: 'MESSAGE',
+        },
+      });
+
+      // Tạo tin nhắn
+      const newMessage = await tx.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: userId,
+          content: content ?? null,
+          replyToId: replyToId ?? null,
+          reactableId: reactable.id,
+        },
+      });
+
+      // Tạo file attachments
+      if (attachmentUrls && attachmentUrls.length > 0) {
+        await tx.fileAttachment.createMany({
+          data: attachmentUrls.map((fileUrl) => ({
+            reactableId: reactable.id,
+            fileUrl,
+          })),
+        });
+      }
+
+      // Cập nhật lastReadAt cho sender
+      await tx.conversationParticipant.update({
+        where: {
+          conversationId_userId: {
+            conversationId: conversation.id,
+            userId,
+          },
+        },
+        data: {
+          lastReadAt: new Date(),
+        },
+      });
+
+      // Cập nhật conversation.updatedAt
+      await tx.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+
+      return newMessage;
+    });
+
+    // 6. Lấy tin nhắn đầy đủ để trả về
+    const fullMessage = await this.prisma.message.findUnique({
+      where: { id: message.id },
+      include: {
+        sender: true,
+        replyTo: {
+          include: {
+            sender: true,
+          },
+        },
+        mentions: {
+          include: {
+            mentionedUser: true,
+          },
+        },
+        reactable: {
+          include: {
+            reactions: true,
+            fileAttachments: true,
+          },
+        },
+      },
+    });
+
+    return this.mapMessageToDto(fullMessage);
+  }
+
+  /**
+   * Lấy tin nhắn trong direct conversation với pagination
+   */
+  async getDirectMessages(
+    userId: string,
+    conversationId: string,
+    query: GetMessagesQueryDto,
+  ): Promise<MessageListResponseDto> {
+    // 1. Kiểm tra conversation tồn tại
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation không tồn tại');
+    }
+
+    if (conversation.type !== 'DIRECT') {
+      throw new BadRequestException('Conversation không phải loại DIRECT');
+    }
+
+    // 2. Kiểm tra user có quyền
+    const participantIds = conversation.participants.map((p) => p.userId);
+    if (!participantIds.includes(userId)) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của conversation này',
+      );
+    }
+
+    // 3. Build query conditions
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    const skip = (page - 1) * limit;
+
+    const whereCondition: any = {
+      conversationId: conversation.id,
+    };
+
+    // Cursor-based pagination
+    if (query.beforeId) {
+      const beforeMessage = await this.prisma.message.findUnique({
+        where: { id: query.beforeId },
+      });
+      if (beforeMessage) {
+        whereCondition.createdAt = { lt: beforeMessage.createdAt };
+      }
+    }
+
+    if (query.afterId) {
+      const afterMessage = await this.prisma.message.findUnique({
+        where: { id: query.afterId },
+      });
+      if (afterMessage) {
+        whereCondition.createdAt = { gt: afterMessage.createdAt };
+      }
+    }
+
+    // 4. Đếm tổng số tin nhắn
+    const total = await this.prisma.message.count({
+      where: { conversationId: conversation.id },
+    });
+
+    // 5. Lấy tin nhắn
+    const messages = await this.prisma.message.findMany({
+      where: whereCondition,
+      include: {
+        sender: true,
+        replyTo: {
+          include: {
+            sender: true,
+          },
+        },
+        mentions: {
+          include: {
+            mentionedUser: true,
+          },
+        },
+        reactable: {
+          include: {
+            reactions: true,
+            fileAttachments: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip: query.beforeId || query.afterId ? 0 : skip,
+      take: limit,
+    });
+
+    // 6. Cập nhật lastReadAt
+    await this.prisma.conversationParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId,
+        },
+      },
+      data: {
+        lastReadAt: new Date(),
+      },
+    });
+
+    // 7. Reverse để hiển thị tin nhắn cũ trước
+    const sortedMessages = messages.reverse();
+
+    return {
+      messages: sortedMessages.map((m) => this.mapMessageToDto(m)),
+      total,
+      page,
+      limit,
+      hasMore: skip + messages.length < total,
+    };
+  }
+
+  /**
+   * Đánh dấu đã đọc tin nhắn trong direct conversation
+   */
+  async markDirectConversationAsRead(
+    userId: string,
+    conversationId: string,
+  ): Promise<{ message: string }> {
+    // 1. Kiểm tra conversation tồn tại
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation không tồn tại');
+    }
+
+    if (conversation.type !== 'DIRECT') {
+      throw new BadRequestException('Conversation không phải loại DIRECT');
+    }
+
+    // 2. Kiểm tra user có quyền
+    const participantIds = conversation.participants.map((p) => p.userId);
+    if (!participantIds.includes(userId)) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của conversation này',
+      );
+    }
+
+    // 3. Cập nhật lastReadAt
+    await this.prisma.conversationParticipant.update({
+      where: {
+        conversationId_userId: {
+          conversationId: conversation.id,
+          userId,
+        },
+      },
+      data: {
+        lastReadAt: new Date(),
+      },
+    });
+
+    return {
+      message: 'Đã đánh dấu đọc tất cả tin nhắn',
+    };
+  }
+
+  /**
+   * Xóa tin nhắn trong direct conversation
+   */
+  async deleteDirectMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<{ message: string }> {
+    // 1. Kiểm tra conversation tồn tại
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation không tồn tại');
+    }
+
+    if (conversation.type !== 'DIRECT') {
+      throw new BadRequestException('Conversation không phải loại DIRECT');
+    }
+
+    // 2. Kiểm tra user có quyền
+    const participantIds = conversation.participants.map((p) => p.userId);
+    if (!participantIds.includes(userId)) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của conversation này',
+      );
+    }
+
+    // 3. Tìm tin nhắn
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Tin nhắn không tồn tại');
+    }
+
+    if (message.conversationId !== conversationId) {
+      throw new BadRequestException('Tin nhắn không thuộc conversation này');
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Tin nhắn đã bị xóa');
+    }
+
+    // 4. Kiểm tra quyền xóa (chỉ người gửi mới được xóa trong DM)
+    if (message.senderId !== userId) {
+      throw new ForbiddenException(
+        'Bạn chỉ có thể xóa tin nhắn của chính mình',
+      );
+    }
+
+    // 5. Soft delete tin nhắn
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedById: userId,
+      },
+    });
+
+    return {
+      message: 'Đã xóa tin nhắn thành công',
+    };
+  }
+
+  /**
+   * Thêm reaction vào tin nhắn trong direct conversation
+   */
+  async addDirectReaction(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    dto: AddReactionDto,
+  ): Promise<{ message: string }> {
+    // 1. Kiểm tra conversation tồn tại
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation không tồn tại');
+    }
+
+    if (conversation.type !== 'DIRECT') {
+      throw new BadRequestException('Conversation không phải loại DIRECT');
+    }
+
+    // 2. Kiểm tra user có quyền
+    const participantIds = conversation.participants.map((p) => p.userId);
+    if (!participantIds.includes(userId)) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của conversation này',
+      );
+    }
+
+    // 3. Tìm tin nhắn
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        reactable: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Tin nhắn không tồn tại');
+    }
+
+    if (message.conversationId !== conversationId) {
+      throw new BadRequestException('Tin nhắn không thuộc conversation này');
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Không thể reaction tin nhắn đã xóa');
+    }
+
+    // 4. Kiểm tra đã reaction chưa
+    const existingReaction = await this.prisma.reaction.findUnique({
+      where: {
+        reactableId_userId_emoji: {
+          reactableId: message.reactableId,
+          userId,
+          emoji: dto.emoji,
+        },
+      },
+    });
+
+    if (existingReaction) {
+      throw new BadRequestException('Bạn đã reaction emoji này rồi');
+    }
+
+    // 5. Tạo reaction
+    await this.prisma.reaction.create({
+      data: {
+        reactableId: message.reactableId,
+        userId,
+        emoji: dto.emoji,
+      },
+    });
+
+    return {
+      message: 'Đã thêm reaction thành công',
+    };
+  }
+
+  /**
+   * Xóa reaction khỏi tin nhắn trong direct conversation
+   */
+  async removeDirectReaction(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<{ message: string }> {
+    // 1. Kiểm tra conversation tồn tại
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation không tồn tại');
+    }
+
+    if (conversation.type !== 'DIRECT') {
+      throw new BadRequestException('Conversation không phải loại DIRECT');
+    }
+
+    // 2. Kiểm tra user có quyền
+    const participantIds = conversation.participants.map((p) => p.userId);
+    if (!participantIds.includes(userId)) {
+      throw new ForbiddenException(
+        'Bạn không phải thành viên của conversation này',
+      );
+    }
+
+    // 3. Tìm tin nhắn
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Tin nhắn không tồn tại');
+    }
+
+    if (message.conversationId !== conversationId) {
+      throw new BadRequestException('Tin nhắn không thuộc conversation này');
+    }
+
+    // 4. Tìm và xóa reaction
+    const reaction = await this.prisma.reaction.findUnique({
+      where: {
+        reactableId_userId_emoji: {
+          reactableId: message.reactableId,
+          userId,
+          emoji,
+        },
+      },
+    });
+
+    if (!reaction) {
+      throw new NotFoundException('Không tìm thấy reaction');
+    }
+
+    await this.prisma.reaction.delete({
+      where: { id: reaction.id },
+    });
+
+    return {
+      message: 'Đã xóa reaction thành công',
+    };
+  }
+}

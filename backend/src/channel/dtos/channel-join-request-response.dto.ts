@@ -59,4 +59,3 @@ export class ChannelJoinRequestResponseDto {
     workspaceId: string;
   };
 }
-

@@ -4,6 +4,6 @@ import { MeetingController } from './meeting.controller';
 
 @Module({
   providers: [MeetingService],
-  controllers: [MeetingController]
+  controllers: [MeetingController],
 })
 export class MeetingModule {}

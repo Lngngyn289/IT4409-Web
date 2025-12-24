@@ -50,9 +50,7 @@ export class AuthService {
     return { id: userId, email };
   }
 
-  async register(
-    dto: RegisterDto,
-  ): Promise<{
+  async register(dto: RegisterDto): Promise<{
     accessToken: string;
     refreshToken: string;
     user: UserResponseBaseDto;
@@ -68,9 +66,7 @@ export class AuthService {
     return { accessToken, refreshToken, user };
   }
 
-  async login(
-    dto: LoginDto,
-  ): Promise<{
+  async login(dto: LoginDto): Promise<{
     accessToken: string;
     refreshToken: string;
     user: UserResponseBaseDto;
@@ -129,13 +125,13 @@ export class AuthService {
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
     const user = await this.userService.findByEmail(dto.email);
-    
+
     if (!user) {
       return { message: 'Email not found' };
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    
+
     // Lưu token vào database với thời hạn 15 phút
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15);

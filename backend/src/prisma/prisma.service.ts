@@ -1,8 +1,16 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
@@ -26,16 +34,20 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return;
       } catch (error) {
         retries--;
-        this.logger.warn(`Database connection failed. Retries left: ${retries}`);
+        this.logger.warn(
+          `Database connection failed. Retries left: ${retries}`,
+        );
         this.logger.error(error.message);
-        
+
         if (retries === 0) {
-          this.logger.error('❌ Could not connect to database after multiple attempts');
+          this.logger.error(
+            '❌ Could not connect to database after multiple attempts',
+          );
           throw error;
         }
-        
+
         // Wait 2 seconds before retry
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
   }

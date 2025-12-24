@@ -33,7 +33,10 @@ export class CreateMessageDto {
   })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true, message: 'Mỗi mentionedUserIds phải là UUID hợp lệ' })
+  @IsUUID('4', {
+    each: true,
+    message: 'Mỗi mentionedUserIds phải là UUID hợp lệ',
+  })
   mentionedUserIds?: string[];
 
   @ApiPropertyOptional({
@@ -46,4 +49,3 @@ export class CreateMessageDto {
   @IsString({ each: true })
   attachmentUrls?: string[];
 }
-

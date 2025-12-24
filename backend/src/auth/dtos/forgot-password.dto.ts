@@ -6,4 +6,3 @@ export class ForgotPasswordDto {
   @ApiProperty({ example: 'user@example.com' })
   email: string;
 }
-

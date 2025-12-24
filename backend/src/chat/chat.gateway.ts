@@ -17,6 +17,7 @@ import { WsJwtGuard, validateSocketToken } from './ws-jwt.guard';
 import type { AuthenticatedSocket } from './ws-jwt.guard';
 import { CreateMessageDto } from './dtos/create-message.dto';
 import { AddReactionDto } from './dtos/add-reaction.dto';
+import { SendDirectMessageDto } from './dtos/send-direct-message.dto';
 
 interface OnlineUser {
   userId: string;
@@ -39,13 +40,13 @@ export class ChatGateway
   server: Server;
 
   private logger = new Logger('ChatGateway');
-  
+
   // Track online users per channel: Map<channelId, Map<userId, OnlineUser>>
   private channelUsers = new Map<string, Map<string, OnlineUser>>();
-  
+
   // Track which channels each socket is in: Map<socketId, Set<channelId>>
   private socketChannels = new Map<string, Set<string>>();
-  
+
   // Track userId to socketIds: Map<userId, Set<socketId>>
   private userSockets = new Map<string, Set<string>>();
 
@@ -62,15 +63,29 @@ export class ChatGateway
   async handleConnection(client: Socket) {
     try {
       this.logger.log(`New connection attempt: ${client.id}`);
-      this.logger.log(`Auth data: ${JSON.stringify(client.handshake.auth || {})}`);
-      this.logger.log(`Query data: ${JSON.stringify(client.handshake.query || {})}`);
-      this.logger.log(`Headers auth: ${client.handshake.headers?.authorization || 'none'}`);
-      
-      const user = await validateSocketToken(client, this.jwtService, this.prisma);
+      this.logger.log(
+        `Auth data: ${JSON.stringify(client.handshake.auth || {})}`,
+      );
+      this.logger.log(
+        `Query data: ${JSON.stringify(client.handshake.query || {})}`,
+      );
+      this.logger.log(
+        `Headers auth: ${client.handshake.headers?.authorization || 'none'}`,
+      );
+
+      const user = await validateSocketToken(
+        client,
+        this.jwtService,
+        this.prisma,
+      );
 
       if (!user) {
-        this.logger.warn(`Unauthorized connection attempt: ${client.id} - No valid user from token`);
-        client.emit('error', { message: 'Unauthorized - Invalid or missing token' });
+        this.logger.warn(
+          `Unauthorized connection attempt: ${client.id} - No valid user from token`,
+        );
+        client.emit('error', {
+          message: 'Unauthorized - Invalid or missing token',
+        });
         client.disconnect();
         return;
       }
@@ -94,8 +109,10 @@ export class ChatGateway
         create: { userId: user.id, status: 'online' },
       });
 
-      this.logger.log(`Client connected: ${client.id} (User: ${user.username})`);
-      
+      this.logger.log(
+        `Client connected: ${client.id} (User: ${user.username})`,
+      );
+
       // Emit connection success
       client.emit('connected', {
         message: 'Connected successfully',
@@ -105,7 +122,6 @@ export class ChatGateway
           fullName: user.fullName,
         },
       });
-
     } catch (error) {
       this.logger.error(`Connection error: ${error.message}`);
       client.emit('error', { message: 'Connection failed' });
@@ -121,16 +137,24 @@ export class ChatGateway
       const userSocketSet = this.userSockets.get(user.id);
       if (userSocketSet) {
         userSocketSet.delete(client.id);
-        
+
         // If user has no more sockets, mark as offline
         if (userSocketSet.size === 0) {
           this.userSockets.delete(user.id);
-          
+
           // Update presence to offline
           await this.prisma.userPresence.upsert({
             where: { userId: user.id },
-            update: { status: 'offline', lastSeen: new Date(), updatedAt: new Date() },
-            create: { userId: user.id, status: 'offline', lastSeen: new Date() },
+            update: {
+              status: 'offline',
+              lastSeen: new Date(),
+              updatedAt: new Date(),
+            },
+            create: {
+              userId: user.id,
+              status: 'offline',
+              lastSeen: new Date(),
+            },
           });
         }
       }
@@ -140,7 +164,7 @@ export class ChatGateway
       if (channels) {
         for (const channelId of channels) {
           this.removeUserFromChannel(user.id, channelId, client.id);
-          
+
           // Notify channel members
           this.server.to(`channel:${channelId}`).emit('user:offline', {
             channelId,
@@ -154,7 +178,9 @@ export class ChatGateway
       }
 
       this.socketChannels.delete(client.id);
-      this.logger.log(`Client disconnected: ${client.id} (User: ${user.username})`);
+      this.logger.log(
+        `Client disconnected: ${client.id} (User: ${user.username})`,
+      );
     }
   }
 
@@ -174,7 +200,9 @@ export class ChatGateway
       // Verify user is member of channel
       const isMember = await this.isChannelMember(user.id, channelId);
       if (!isMember) {
-        client.emit('error', { message: 'Bạn không phải thành viên của channel này' });
+        client.emit('error', {
+          message: 'Bạn không phải thành viên của channel này',
+        });
         return;
       }
 
@@ -207,7 +235,6 @@ export class ChatGateway
       });
 
       this.logger.log(`User ${user.username} joined channel ${channelId}`);
-
     } catch (error) {
       this.logger.error(`Error joining channel: ${error.message}`);
       client.emit('error', { message: 'Không thể tham gia channel' });
@@ -279,11 +306,12 @@ export class ChatGateway
         message: newMessage,
       });
 
-      this.logger.log(`Message sent by ${user.username} in channel ${channelId}`);
-
+      this.logger.log(
+        `Message sent by ${user.username} in channel ${channelId}`,
+      );
     } catch (error) {
       this.logger.error(`Error sending message: ${error.message}`);
-      client.emit('error', { 
+      client.emit('error', {
         event: 'message:send',
         message: error.message || 'Không thể gửi tin nhắn',
       });
@@ -316,7 +344,6 @@ export class ChatGateway
       });
 
       client.emit('message:delete:success', { channelId, messageId });
-
     } catch (error) {
       this.logger.error(`Error deleting message: ${error.message}`);
       client.emit('error', {
@@ -333,13 +360,19 @@ export class ChatGateway
   @SubscribeMessage('reaction:add')
   async handleAddReaction(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { channelId: string; messageId: string; reaction: AddReactionDto },
+    @MessageBody()
+    data: { channelId: string; messageId: string; reaction: AddReactionDto },
   ) {
     const { channelId, messageId, reaction } = data;
     const user = client.user;
 
     try {
-      await this.chatService.addReaction(user.id, channelId, messageId, reaction);
+      await this.chatService.addReaction(
+        user.id,
+        channelId,
+        messageId,
+        reaction,
+      );
 
       // Broadcast reaction to channel
       this.server.to(`channel:${channelId}`).emit('reaction:added', {
@@ -351,7 +384,6 @@ export class ChatGateway
           username: user.username,
         },
       });
-
     } catch (error) {
       this.logger.error(`Error adding reaction: ${error.message}`);
       client.emit('error', {
@@ -368,13 +400,19 @@ export class ChatGateway
   @SubscribeMessage('reaction:remove')
   async handleRemoveReaction(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { channelId: string; messageId: string; emoji: string },
+    @MessageBody()
+    data: { channelId: string; messageId: string; emoji: string },
   ) {
     const { channelId, messageId, emoji } = data;
     const user = client.user;
 
     try {
-      await this.chatService.removeReaction(user.id, channelId, messageId, emoji);
+      await this.chatService.removeReaction(
+        user.id,
+        channelId,
+        messageId,
+        emoji,
+      );
 
       // Broadcast removal to channel
       this.server.to(`channel:${channelId}`).emit('reaction:removed', {
@@ -386,7 +424,6 @@ export class ChatGateway
           username: user.username,
         },
       });
-
     } catch (error) {
       this.logger.error(`Error removing reaction: ${error.message}`);
       client.emit('error', {
@@ -465,7 +502,6 @@ export class ChatGateway
         },
         readAt: new Date(),
       });
-
     } catch (error) {
       this.logger.error(`Error marking as read: ${error.message}`);
     }
@@ -491,7 +527,10 @@ export class ChatGateway
 
   // ============ Helper Methods ============
 
-  private async isChannelMember(userId: string, channelId: string): Promise<boolean> {
+  private async isChannelMember(
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
       include: {
@@ -519,13 +558,17 @@ export class ChatGateway
     return workspaceMember?.role.name === 'WORKSPACE_ADMIN';
   }
 
-  private addUserToChannel(user: AuthenticatedSocket['user'], channelId: string, socketId: string) {
+  private addUserToChannel(
+    user: AuthenticatedSocket['user'],
+    channelId: string,
+    socketId: string,
+  ) {
     if (!this.channelUsers.has(channelId)) {
       this.channelUsers.set(channelId, new Map());
     }
 
     const channelUserMap = this.channelUsers.get(channelId)!;
-    
+
     if (!channelUserMap.has(user.id)) {
       channelUserMap.set(user.id, {
         userId: user.id,
@@ -538,7 +581,11 @@ export class ChatGateway
     channelUserMap.get(user.id)!.socketIds.add(socketId);
   }
 
-  private removeUserFromChannel(userId: string, channelId: string, socketId: string) {
+  private removeUserFromChannel(
+    userId: string,
+    channelId: string,
+    socketId: string,
+  ) {
     const channelUserMap = this.channelUsers.get(channelId);
     if (!channelUserMap) return;
 
@@ -558,11 +605,13 @@ export class ChatGateway
     }
   }
 
-  private getOnlineUsersInChannel(channelId: string): Array<{ id: string; username: string; fullName: string }> {
+  private getOnlineUsersInChannel(
+    channelId: string,
+  ): Array<{ id: string; username: string; fullName: string }> {
     const channelUserMap = this.channelUsers.get(channelId);
     if (!channelUserMap) return [];
 
-    return Array.from(channelUserMap.values()).map(user => ({
+    return Array.from(channelUserMap.values()).map((user) => ({
       id: user.userId,
       username: user.username,
       fullName: user.fullName,
@@ -587,5 +636,400 @@ export class ChatGateway
       }
     }
   }
-}
 
+  // ============ DIRECT MESSAGING EVENTS ============
+
+  /**
+   * Join a direct conversation room
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:join')
+  async handleJoinDirectConversation(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const { conversationId } = data;
+    const user = client.user;
+
+    try {
+      // Verify user is participant of conversation
+      const conversation = await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: {
+          participants: true,
+        },
+      });
+
+      if (!conversation) {
+        client.emit('error', { message: 'Conversation không tồn tại' });
+        return;
+      }
+
+      if (conversation.type !== 'DIRECT') {
+        client.emit('error', { message: 'Không phải direct conversation' });
+        return;
+      }
+
+      const isParticipant = conversation.participants.some(
+        (p) => p.userId === user.id,
+      );
+      if (!isParticipant) {
+        client.emit('error', {
+          message: 'Bạn không phải thành viên của conversation này',
+        });
+        return;
+      }
+
+      // Join Socket.IO room
+      client.join(`dm:${conversationId}`);
+
+      // Get other participant
+      const otherParticipant = conversation.participants.find(
+        (p) => p.userId !== user.id,
+      );
+
+      // Check if other participant is online
+      const otherParticipantOnline = otherParticipant
+        ? this.userSockets.has(otherParticipant.userId)
+        : false;
+
+      client.emit('dm:joined', {
+        conversationId,
+        otherParticipantOnline,
+      });
+
+      // Notify other participant that user is now in the conversation
+      if (otherParticipant) {
+        this.emitToUser(otherParticipant.userId, 'dm:user:online', {
+          conversationId,
+          user: {
+            id: user.id,
+            username: user.username,
+            fullName: user.fullName,
+          },
+        });
+      }
+
+      this.logger.log(
+        `User ${user.username} joined DM conversation ${conversationId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Error joining DM conversation: ${error.message}`);
+      client.emit('error', { message: 'Không thể tham gia conversation' });
+    }
+  }
+
+  /**
+   * Leave a direct conversation room
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:leave')
+  async handleLeaveDirectConversation(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const { conversationId } = data;
+    const user = client.user;
+
+    // Leave Socket.IO room
+    client.leave(`dm:${conversationId}`);
+
+    // Get other participant to notify
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (conversation) {
+      const otherParticipant = conversation.participants.find(
+        (p) => p.userId !== user.id,
+      );
+      if (otherParticipant) {
+        this.emitToUser(otherParticipant.userId, 'dm:user:offline', {
+          conversationId,
+          user: {
+            id: user.id,
+            username: user.username,
+          },
+        });
+      }
+    }
+
+    client.emit('dm:left', { conversationId });
+    this.logger.log(
+      `User ${user.username} left DM conversation ${conversationId}`,
+    );
+  }
+
+  /**
+   * Send a direct message
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:message:send')
+  async handleSendDirectMessage(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: Omit<SendDirectMessageDto, 'workspaceId'> & { workspaceId: string },
+  ) {
+    const user = client.user;
+
+    try {
+      // Use ChatService to create message
+      const newMessage = await this.chatService.sendDirectMessage(user.id, {
+        workspaceId: data.workspaceId,
+        conversationId: data.conversationId,
+        recipientId: data.recipientId,
+        content: data.content,
+        replyToId: data.replyToId,
+        attachmentUrls: data.attachmentUrls,
+      });
+
+      // Get conversation to find other participant
+      const conversation = await this.prisma.conversation.findUnique({
+        where: { id: newMessage.conversationId },
+        include: {
+          participants: true,
+        },
+      });
+
+      if (conversation) {
+        // Broadcast to conversation room
+        this.server
+          .to(`dm:${newMessage.conversationId}`)
+          .emit('dm:message:new', {
+            conversationId: newMessage.conversationId,
+            message: newMessage,
+          });
+
+        // Also emit directly to recipient (in case they're not in the room yet)
+        const recipient = conversation.participants.find(
+          (p) => p.userId !== user.id,
+        );
+        if (recipient) {
+          this.emitToUser(recipient.userId, 'dm:message:notification', {
+            conversationId: newMessage.conversationId,
+            message: newMessage,
+          });
+        }
+      }
+
+      // Send confirmation to sender
+      client.emit('dm:message:sent', {
+        conversationId: newMessage.conversationId,
+        message: newMessage,
+      });
+
+      this.logger.log(`Direct message sent by ${user.username}`);
+    } catch (error) {
+      this.logger.error(`Error sending direct message: ${error.message}`);
+      client.emit('error', {
+        event: 'dm:message:send',
+        message: error.message || 'Không thể gửi tin nhắn',
+      });
+    }
+  }
+
+  /**
+   * Delete a direct message
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:message:delete')
+  async handleDeleteDirectMessage(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string; messageId: string },
+  ) {
+    const { conversationId, messageId } = data;
+    const user = client.user;
+
+    try {
+      await this.chatService.deleteDirectMessage(
+        user.id,
+        conversationId,
+        messageId,
+      );
+
+      // Broadcast deletion to conversation
+      this.server.to(`dm:${conversationId}`).emit('dm:message:deleted', {
+        conversationId,
+        messageId,
+        deletedBy: {
+          id: user.id,
+          username: user.username,
+        },
+      });
+
+      client.emit('dm:message:delete:success', { conversationId, messageId });
+    } catch (error) {
+      this.logger.error(`Error deleting direct message: ${error.message}`);
+      client.emit('error', {
+        event: 'dm:message:delete',
+        message: error.message || 'Không thể xóa tin nhắn',
+      });
+    }
+  }
+
+  /**
+   * Add reaction to direct message
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:reaction:add')
+  async handleAddDirectReaction(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      conversationId: string;
+      messageId: string;
+      reaction: AddReactionDto;
+    },
+  ) {
+    const { conversationId, messageId, reaction } = data;
+    const user = client.user;
+
+    try {
+      await this.chatService.addDirectReaction(
+        user.id,
+        conversationId,
+        messageId,
+        reaction,
+      );
+
+      // Broadcast reaction to conversation
+      this.server.to(`dm:${conversationId}`).emit('dm:reaction:added', {
+        conversationId,
+        messageId,
+        emoji: reaction.emoji,
+        user: {
+          id: user.id,
+          username: user.username,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Error adding direct reaction: ${error.message}`);
+      client.emit('error', {
+        event: 'dm:reaction:add',
+        message: error.message || 'Không thể thêm reaction',
+      });
+    }
+  }
+
+  /**
+   * Remove reaction from direct message
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:reaction:remove')
+  async handleRemoveDirectReaction(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: { conversationId: string; messageId: string; emoji: string },
+  ) {
+    const { conversationId, messageId, emoji } = data;
+    const user = client.user;
+
+    try {
+      await this.chatService.removeDirectReaction(
+        user.id,
+        conversationId,
+        messageId,
+        emoji,
+      );
+
+      // Broadcast removal to conversation
+      this.server.to(`dm:${conversationId}`).emit('dm:reaction:removed', {
+        conversationId,
+        messageId,
+        emoji,
+        user: {
+          id: user.id,
+          username: user.username,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Error removing direct reaction: ${error.message}`);
+      client.emit('error', {
+        event: 'dm:reaction:remove',
+        message: error.message || 'Không thể xóa reaction',
+      });
+    }
+  }
+
+  /**
+   * Typing indicator for direct message - start
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:typing:start')
+  handleDirectTypingStart(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const { conversationId } = data;
+    const user = client.user;
+
+    // Broadcast to conversation (except sender)
+    client.to(`dm:${conversationId}`).emit('dm:typing:start', {
+      conversationId,
+      user: {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+      },
+    });
+  }
+
+  /**
+   * Typing indicator for direct message - stop
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:typing:stop')
+  handleDirectTypingStop(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const { conversationId } = data;
+    const user = client.user;
+
+    // Broadcast to conversation (except sender)
+    client.to(`dm:${conversationId}`).emit('dm:typing:stop', {
+      conversationId,
+      user: {
+        id: user.id,
+        username: user.username,
+      },
+    });
+  }
+
+  /**
+   * Mark direct messages as read
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('dm:messages:read')
+  async handleMarkDirectAsRead(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const { conversationId } = data;
+    const user = client.user;
+
+    try {
+      await this.chatService.markDirectConversationAsRead(
+        user.id,
+        conversationId,
+      );
+
+      // Broadcast read receipt to conversation
+      this.server.to(`dm:${conversationId}`).emit('dm:messages:read', {
+        conversationId,
+        user: {
+          id: user.id,
+          username: user.username,
+        },
+        readAt: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error marking direct messages as read: ${error.message}`,
+      );
+    }
+  }
+}

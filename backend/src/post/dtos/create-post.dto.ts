@@ -4,10 +4,9 @@ import { ApiProperty } from '@nestjs/swagger';
 export class CreatePostDto {
   @IsString()
   @IsNotEmpty()
-  @ApiProperty({ 
+  @ApiProperty({
     example: 'This is my first post in this channel!',
-    description: 'Content of the post'
+    description: 'Content of the post',
   })
   content: string;
 }
-

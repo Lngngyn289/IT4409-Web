@@ -9,9 +9,9 @@ export class UpdateChannelDto {
 
   @IsOptional()
   @IsString()
-  @ApiProperty({ 
-    example: 'Updated channel description', 
-    required: false 
+  @ApiProperty({
+    example: 'Updated channel description',
+    required: false,
   })
   description?: string;
 
@@ -20,4 +20,3 @@ export class UpdateChannelDto {
   @ApiProperty({ example: true, required: false })
   isPrivate?: boolean;
 }
-

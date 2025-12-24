@@ -20,4 +20,3 @@ export class CreateChannelDto {
   @ApiProperty({ example: false, required: false })
   isPrivate?: boolean;
 }
-

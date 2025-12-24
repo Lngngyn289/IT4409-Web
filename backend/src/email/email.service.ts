@@ -20,11 +20,14 @@ export class EmailService {
   }
 
   async sendResetPasswordEmail(to: string, resetToken: string) {
-    const frontendUrl = this.configService.get<string>('CLIENT_ORIGIN') || 'http://localhost:5173';
+    const frontendUrl =
+      this.configService.get<string>('CLIENT_ORIGIN') ||
+      'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     const mailOptions = {
-      from: this.configService.get<string>('SMTP_FROM') || 'noreply@example.com',
+      from:
+        this.configService.get<string>('SMTP_FROM') || 'noreply@example.com',
       to,
       subject: 'Đặt lại mật khẩu',
       html: `
@@ -62,4 +65,3 @@ export class EmailService {
     }
   }
 }
-

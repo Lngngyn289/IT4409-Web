@@ -109,7 +109,10 @@ export async function validateSocketToken(
     token = Array.isArray(queryToken) ? queryToken[0] : queryToken;
   }
 
-  console.log('[WS Auth] Token found:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+  console.log(
+    '[WS Auth] Token found:',
+    token ? `${token.substring(0, 20)}...` : 'NO TOKEN',
+  );
   console.log('[WS Auth] Auth object:', client.handshake.auth);
   console.log('[WS Auth] Headers auth:', authHeader ? 'present' : 'missing');
 
@@ -121,7 +124,7 @@ export async function validateSocketToken(
   try {
     const secret = process.env.JWT_SECRET || 'secret_key';
     console.log('[WS Auth] Using secret:', secret.substring(0, 5) + '...');
-    
+
     const payload = await jwtService.verifyAsync(token, {
       secret,
     });
@@ -157,4 +160,3 @@ export async function validateSocketToken(
     return null;
   }
 }
-

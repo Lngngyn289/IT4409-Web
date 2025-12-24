@@ -51,4 +51,3 @@ export class ChannelListItemDto {
   @ApiProperty({ required: false })
   myRole?: string | null;
 }
-

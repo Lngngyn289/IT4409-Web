@@ -83,13 +83,19 @@ export class MessageResponseDto {
   @ApiPropertyOptional({ description: 'Tin nhắn đang reply' })
   replyTo?: ReplyToMessageDto;
 
-  @ApiProperty({ description: 'Danh sách người được mention', type: [MentionedUserDto] })
+  @ApiProperty({
+    description: 'Danh sách người được mention',
+    type: [MentionedUserDto],
+  })
   mentions: MentionedUserDto[];
 
   @ApiProperty({ description: 'Danh sách reactions', type: [ReactionDto] })
   reactions: ReactionDto[];
 
-  @ApiProperty({ description: 'Danh sách file đính kèm', type: [AttachmentDto] })
+  @ApiProperty({
+    description: 'Danh sách file đính kèm',
+    type: [AttachmentDto],
+  })
   attachments: AttachmentDto[];
 
   @ApiProperty({ description: 'Tin nhắn đã bị xóa?' })
@@ -103,7 +109,10 @@ export class MessageResponseDto {
 }
 
 export class MessageListResponseDto {
-  @ApiProperty({ description: 'Danh sách tin nhắn', type: [MessageResponseDto] })
+  @ApiProperty({
+    description: 'Danh sách tin nhắn',
+    type: [MessageResponseDto],
+  })
   messages: MessageResponseDto[];
 
   @ApiProperty({ description: 'Tổng số tin nhắn' })
@@ -135,4 +144,3 @@ export class ConversationResponseDto {
   @ApiProperty({ description: 'Thời gian cập nhật' })
   updatedAt: Date;
 }
-

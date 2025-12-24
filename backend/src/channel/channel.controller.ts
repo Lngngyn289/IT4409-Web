@@ -96,7 +96,8 @@ export class ChannelController {
   @Get(':channelId')
   @ApiOperation({
     summary: 'Xem chi tiết channel',
-    description: 'Chỉ Channel Member, Channel Admin, hoặc Workspace Admin mới xem được',
+    description:
+      'Chỉ Channel Member, Channel Admin, hoặc Workspace Admin mới xem được',
   })
   @ApiResponse({
     status: 200,
@@ -127,7 +128,8 @@ export class ChannelController {
   @Patch(':channelId')
   @ApiOperation({
     summary: 'Cập nhật tên hoặc mô tả channel',
-    description: 'Chỉ Channel Admin hoặc Workspace Admin mới có quyền cập nhật channel',
+    description:
+      'Chỉ Channel Admin hoặc Workspace Admin mới có quyền cập nhật channel',
   })
   @ApiResponse({
     status: 200,
@@ -159,7 +161,8 @@ export class ChannelController {
   @Delete(':channelId')
   @ApiOperation({
     summary: 'Xóa channel khỏi workspace',
-    description: 'Chỉ Channel Admin hoặc Workspace Admin mới có quyền xóa channel',
+    description:
+      'Chỉ Channel Admin hoặc Workspace Admin mới có quyền xóa channel',
   })
   @ApiResponse({
     status: 200,
@@ -360,7 +363,8 @@ export class ChannelController {
   @Get(':channelId/members')
   @ApiOperation({
     summary: 'Lấy danh sách thành viên trong channel',
-    description: 'Chỉ Channel Member, Channel Admin, hoặc Workspace Admin mới xem được',
+    description:
+      'Chỉ Channel Member, Channel Admin, hoặc Workspace Admin mới xem được',
   })
   @ApiResponse({
     status: 200,
@@ -532,4 +536,3 @@ export class ChannelController {
     return this.channelService.rejectJoinRequest(userId, channelId, requestId);
   }
 }
-

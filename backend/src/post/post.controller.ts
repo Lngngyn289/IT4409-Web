@@ -7,7 +7,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { PostService } from './post.service';
 import { CreatePostDto } from './dtos/create-post.dto';
 import {
@@ -32,7 +37,8 @@ export class PostController {
   @Post()
   @ApiOperation({
     summary: 'Tạo bài đăng trong channel',
-    description: 'Chỉ Channel Member hoặc Channel Admin mới có quyền tạo bài đăng',
+    description:
+      'Chỉ Channel Member hoặc Channel Admin mới có quyền tạo bài đăng',
   })
   @ApiResponse({
     status: 201,
@@ -121,4 +127,3 @@ export class PostController {
     return this.postService.findOne(userId, channelId, postId);
   }
 }
-

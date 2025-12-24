@@ -4,5 +4,5 @@ export const JOIN_REQUEST_STATUS = {
   REJECTED: 'REJECTED',
 } as const;
 
-export type JoinRequestStatus = typeof JOIN_REQUEST_STATUS[keyof typeof JOIN_REQUEST_STATUS];
-
+export type JoinRequestStatus =
+  (typeof JOIN_REQUEST_STATUS)[keyof typeof JOIN_REQUEST_STATUS];

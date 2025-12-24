@@ -222,10 +222,127 @@ REST API vẫn hoạt động song song với WebSocket:
 | `DELETE` | `/api/channels/:channelId/chat/messages/:id` | Xóa tin nhắn |
 | `POST` | `/api/channels/:channelId/chat/messages/:id/reactions` | Thêm reaction |
 
+## 🔹 Direct Messaging (1-1 Chat)
+
+### REST API Endpoints
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `GET` | `/api/workspaces/:workspaceId/direct-messages` | Lấy danh sách conversations |
+| `POST` | `/api/workspaces/:workspaceId/direct-messages/conversations` | Tạo hoặc lấy conversation |
+| `POST` | `/api/workspaces/:workspaceId/direct-messages/send` | Gửi tin nhắn direct |
+| `GET` | `/api/workspaces/:workspaceId/direct-messages/conversations/:conversationId/messages` | Lấy tin nhắn (pagination) |
+| `DELETE` | `/api/workspaces/:workspaceId/direct-messages/conversations/:conversationId/messages/:messageId` | Xóa tin nhắn |
+| `POST` | `/api/workspaces/:workspaceId/direct-messages/conversations/:conversationId/messages/:messageId/reactions` | Thêm reaction |
+| `DELETE` | `/api/workspaces/:workspaceId/direct-messages/conversations/:conversationId/messages/:messageId/reactions/:emoji` | Xóa reaction |
+| `POST` | `/api/workspaces/:workspaceId/direct-messages/conversations/:conversationId/mark-read` | Đánh dấu đã đọc |
+
+### WebSocket Events (Direct Messaging)
+
+#### Client → Server (Emit)
+
+| Event | Payload | Mô tả |
+|-------|---------|-------|
+| `dm:join` | `{ conversationId: string }` | Join vào DM conversation room |
+| `dm:leave` | `{ conversationId: string }` | Rời khỏi DM conversation room |
+| `dm:message:send` | `{ workspaceId, conversationId?, recipientId, content?, replyToId?, attachmentUrls? }` | Gửi tin nhắn direct |
+| `dm:message:delete` | `{ conversationId: string, messageId: string }` | Xóa tin nhắn |
+| `dm:reaction:add` | `{ conversationId: string, messageId: string, reaction: { emoji: string } }` | Thêm reaction |
+| `dm:reaction:remove` | `{ conversationId: string, messageId: string, emoji: string }` | Xóa reaction |
+| `dm:typing:start` | `{ conversationId: string }` | Bắt đầu gõ |
+| `dm:typing:stop` | `{ conversationId: string }` | Dừng gõ |
+| `dm:messages:read` | `{ conversationId: string }` | Đánh dấu đã đọc |
+
+#### Server → Client (Listen)
+
+| Event | Payload | Mô tả |
+|-------|---------|-------|
+| `dm:joined` | `{ conversationId, otherParticipantOnline }` | Đã join conversation |
+| `dm:left` | `{ conversationId }` | Đã rời conversation |
+| `dm:message:new` | `{ conversationId, message }` | Tin nhắn mới |
+| `dm:message:notification` | `{ conversationId, message }` | Thông báo tin nhắn mới (cho user chưa join room) |
+| `dm:message:sent` | `{ conversationId, message }` | Xác nhận đã gửi |
+| `dm:message:deleted` | `{ conversationId, messageId, deletedBy }` | Tin nhắn bị xóa |
+| `dm:reaction:added` | `{ conversationId, messageId, emoji, user }` | Reaction mới |
+| `dm:reaction:removed` | `{ conversationId, messageId, emoji, user }` | Reaction bị xóa |
+| `dm:typing:start` | `{ conversationId, user }` | Ai đó đang gõ |
+| `dm:typing:stop` | `{ conversationId, user }` | Ai đó dừng gõ |
+| `dm:user:online` | `{ conversationId, user }` | User online trong conversation |
+| `dm:user:offline` | `{ conversationId, user }` | User offline trong conversation |
+| `dm:messages:read` | `{ conversationId, user, readAt }` | User đã đọc |
+
+### Example: Sending Direct Message
+
+```typescript
+// Gửi tin nhắn trực tiếp cho user khác trong workspace
+socket.emit('dm:message:send', {
+  workspaceId: 'workspace-id',
+  recipientId: 'user-id',
+  content: 'Hello!',
+  // conversationId: 'conv-id', // Optional: nếu đã có conversation
+  // replyToId: 'msg-id', // Optional: reply to message
+  // attachmentUrls: ['url1', 'url2'], // Optional: file attachments
+});
+
+// Listen for new messages
+socket.on('dm:message:new', ({ conversationId, message }) => {
+  console.log('New DM:', message);
+});
+
+// Listen for message notifications (khi chưa join room)
+socket.on('dm:message:notification', ({ conversationId, message }) => {
+  console.log('New DM notification:', message);
+  // Có thể hiển thị notification và tự động join conversation
+  socket.emit('dm:join', { conversationId });
+});
+```
+
+### Example: Listing Direct Conversations
+
+```typescript
+// REST API: Lấy danh sách conversations
+const response = await fetch('/api/workspaces/:workspaceId/direct-messages', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+
+const { conversations, total } = await response.json();
+
+// conversations = [
+//   {
+//     id: 'conv-id',
+//     otherParticipant: {
+//       id: 'user-id',
+//       username: 'john_doe',
+//       fullName: 'John Doe',
+//       email: 'john@example.com',
+//       avatarUrl: '...',
+//       isOnline: true
+//     },
+//     lastMessage: {
+//       id: 'msg-id',
+//       content: 'Hello!',
+//       senderId: 'user-id',
+//       senderName: 'John Doe',
+//       isDeleted: false,
+//       createdAt: '2023-12-24T10:00:00Z'
+//     },
+//     unreadCount: 3,
+//     updatedAt: '2023-12-24T10:00:00Z',
+//     createdAt: '2023-12-20T10:00:00Z'
+//   }
+// ]
+```
+
 ## 📝 Notes
 
 1. **Namespace**: WebSocket sử dụng namespace `/chat`
-2. **Room**: Mỗi channel là một Socket.IO room `channel:{channelId}`
+2. **Rooms**:
+   - Channel chat: `channel:{channelId}`
+   - Direct messaging: `dm:{conversationId}`
 3. **Authentication**: Token được verify mỗi lần connect và mỗi event (qua Guard)
 4. **Persistence**: Messages được lưu vào DB, WebSocket chỉ broadcast real-time
+5. **Direct Messages**: Chỉ có thể chat với members trong cùng workspace
+6. **Privacy**: Trong DM, chỉ người gửi mới có quyền xóa tin nhắn của mình
 

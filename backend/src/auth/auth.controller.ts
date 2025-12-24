@@ -118,9 +118,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Gửi link reset mật khẩu qua email' })
   @ApiBody({ type: ForgotPasswordDto })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Email chứa link reset password đã được gửi' 
+  @ApiResponse({
+    status: 200,
+    description: 'Email chứa link reset password đã được gửi',
   })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
@@ -131,13 +131,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Đặt lại mật khẩu với token' })
   @ApiBody({ type: ResetPasswordDto })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Mật khẩu đã được đặt lại thành công' 
+  @ApiResponse({
+    status: 200,
+    description: 'Mật khẩu đã được đặt lại thành công',
   })
-  @ApiResponse({ 
-    status: 400, 
-    description: 'Token không hợp lệ hoặc đã hết hạn' 
+  @ApiResponse({
+    status: 400,
+    description: 'Token không hợp lệ hoặc đã hết hạn',
   })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);

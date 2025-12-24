@@ -4,10 +4,9 @@ import { ApiProperty } from '@nestjs/swagger';
 export class CreateCommentDto {
   @IsString()
   @IsNotEmpty()
-  @ApiProperty({ 
+  @ApiProperty({
     example: 'Great post! Thanks for sharing.',
-    description: 'Content of the comment'
+    description: 'Content of the comment',
   })
   content: string;
 }
-

@@ -328,7 +328,10 @@ export class WorkspaceService {
   }
 
   // 9. Xóa workspace (chỉ admin)
-  async remove(userId: string, workspaceId: string): Promise<{ message: string }> {
+  async remove(
+    userId: string,
+    workspaceId: string,
+  ): Promise<{ message: string }> {
     const membership = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
       include: { role: true },
@@ -357,7 +360,10 @@ export class WorkspaceService {
       include: { role: true },
     });
 
-    if (!adminMembership || adminMembership.role.name !== ROLES.WORKSPACE_ADMIN) {
+    if (
+      !adminMembership ||
+      adminMembership.role.name !== ROLES.WORKSPACE_ADMIN
+    ) {
       throw new ForbiddenException('Bạn không có quyền thêm thành viên');
     }
 
@@ -374,14 +380,17 @@ export class WorkspaceService {
     });
 
     if (existingMember) {
-      throw new BadRequestException('Người dùng này đã là thành viên của workspace');
+      throw new BadRequestException(
+        'Người dùng này đã là thành viên của workspace',
+      );
     }
 
     const memberRole = await this.prisma.role.findUnique({
       where: { name: ROLES.WORKSPACE_MEMBER },
     });
 
-    if (!memberRole) throw new NotFoundException('Role WORKSPACE_MEMBER not found');
+    if (!memberRole)
+      throw new NotFoundException('Role WORKSPACE_MEMBER not found');
 
     return this.prisma.workspaceMember.create({
       data: {
@@ -400,7 +409,10 @@ export class WorkspaceService {
       include: { role: true },
     });
 
-    if (!adminMembership || adminMembership.role.name !== ROLES.WORKSPACE_ADMIN) {
+    if (
+      !adminMembership ||
+      adminMembership.role.name !== ROLES.WORKSPACE_ADMIN
+    ) {
       throw new ForbiddenException('Bạn không có quyền xóa thành viên');
     }
 
@@ -424,15 +436,15 @@ export class WorkspaceService {
     // Xóa thành viên (Prisma cascade sẽ xóa channel memberships nếu được cấu hình,
     // nhưng để chắc chắn ta nên xóa channel memberships trước hoặc dùng transaction)
     // Ở đây giả sử cascade delete được cấu hình trong schema.prisma hoặc xóa thủ công
-    
+
     // Xóa khỏi tất cả channel trong workspace
     await this.prisma.channelMember.deleteMany({
       where: {
         userId: memberToRemove.userId,
         channel: {
-          workspaceId: workspaceId
-        }
-      }
+          workspaceId: workspaceId,
+        },
+      },
     });
 
     await this.prisma.workspaceMember.delete({
@@ -455,7 +467,10 @@ export class WorkspaceService {
       include: { role: true },
     });
 
-    if (!adminMembership || adminMembership.role.name !== ROLES.WORKSPACE_ADMIN) {
+    if (
+      !adminMembership ||
+      adminMembership.role.name !== ROLES.WORKSPACE_ADMIN
+    ) {
       throw new ForbiddenException('Bạn không có quyền cập nhật role');
     }
 

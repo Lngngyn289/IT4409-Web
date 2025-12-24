@@ -40,4 +40,3 @@ export class GetMessagesQueryDto {
   @IsOptional()
   afterId?: string;
 }
-

@@ -262,12 +262,14 @@ export class PostService {
     });
 
     // 5. Map preview comments
-    const previewComments: CommentPreviewDto[] = post.comments.map((comment) => ({
-      id: comment.id,
-      content: comment.content,
-      createdAt: comment.createdAt,
-      author: this.mapUserToAuthorDto(comment.author),
-    }));
+    const previewComments: CommentPreviewDto[] = post.comments.map(
+      (comment) => ({
+        id: comment.id,
+        content: comment.content,
+        createdAt: comment.createdAt,
+        author: this.mapUserToAuthorDto(comment.author),
+      }),
+    );
 
     return {
       id: post.id,
@@ -281,4 +283,3 @@ export class PostService {
     };
   }
 }
-

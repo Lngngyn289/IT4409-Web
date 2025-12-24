@@ -115,7 +115,11 @@ export class WorkspaceController {
 
   @Get('/:workspaceId/members')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(ROLES.WORKSPACE_MEMBER, ROLES.WORKSPACE_ADMIN, ROLES.WORKSPACE_PRIVILEGE_MEMBER)
+  @Roles(
+    ROLES.WORKSPACE_MEMBER,
+    ROLES.WORKSPACE_ADMIN,
+    ROLES.WORKSPACE_PRIVILEGE_MEMBER,
+  )
   async getMembers(
     @Param('workspaceId') workspaceId: string,
     @Req() req,
@@ -141,7 +145,11 @@ export class WorkspaceController {
   // Get workspace details
   @Get(':workspaceId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(ROLES.WORKSPACE_MEMBER, ROLES.WORKSPACE_ADMIN, ROLES.WORKSPACE_PRIVILEGE_MEMBER)
+  @Roles(
+    ROLES.WORKSPACE_MEMBER,
+    ROLES.WORKSPACE_ADMIN,
+    ROLES.WORKSPACE_PRIVILEGE_MEMBER,
+  )
   @ApiOperation({ summary: 'Get workspace details by ID' })
   @ApiParam({ name: 'workspaceId', description: 'ID of the workspace' })
   @ApiResponse({
@@ -245,7 +253,11 @@ export class WorkspaceController {
     @Param('workspaceId') workspaceId: string,
     @Param('memberId') memberId: string,
   ) {
-    return this.workspaceService.removeMember(req.user.id, workspaceId, memberId);
+    return this.workspaceService.removeMember(
+      req.user.id,
+      workspaceId,
+      memberId,
+    );
   }
 
   // Update member role

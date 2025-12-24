@@ -8,7 +8,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CommentService } from './comment.service';
 import { CreateCommentDto } from './dtos/create-comment.dto';
 import { CommentResponseDto } from './dtos/comment-response.dto';
@@ -51,7 +56,12 @@ export class CommentController {
     @Body() createCommentDto: CreateCommentDto,
   ): Promise<CommentResponseDto> {
     const userId = req.user.id;
-    return this.commentService.create(userId, channelId, postId, createCommentDto);
+    return this.commentService.create(
+      userId,
+      channelId,
+      postId,
+      createCommentDto,
+    );
   }
 
   /**
@@ -125,4 +135,3 @@ export class CommentController {
     return this.commentService.remove(userId, channelId, postId, commentId);
   }
 }
-

@@ -11,4 +11,3 @@ export class AddReactionDto {
   @MaxLength(10, { message: 'Emoji tối đa 10 ký tự' })
   emoji: string;
 }
-

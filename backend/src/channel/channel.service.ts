@@ -216,7 +216,10 @@ export class ChannelService {
    * Xem chi tiết Channel
    * Chỉ Channel Member hoặc Channel Admin mới xem được
    */
-  async findOne(userId: string, channelId: string): Promise<ChannelResponseDto> {
+  async findOne(
+    userId: string,
+    channelId: string,
+  ): Promise<ChannelResponseDto> {
     // 1. Tìm channel
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
@@ -308,7 +311,9 @@ export class ChannelService {
         where: { id: channelId },
         data: {
           ...(dto.name && { name: dto.name }),
-          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.description !== undefined && {
+            description: dto.description,
+          }),
           ...(dto.isPrivate !== undefined && { isPrivate: dto.isPrivate }),
         },
         include: {
@@ -338,7 +343,10 @@ export class ChannelService {
    * Xóa Channel
    * Chỉ Channel Admin hoặc Workspace Admin mới có quyền
    */
-  async remove(userId: string, channelId: string): Promise<{ message: string }> {
+  async remove(
+    userId: string,
+    channelId: string,
+  ): Promise<{ message: string }> {
     // 1. Kiểm tra channel tồn tại
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
@@ -402,9 +410,7 @@ export class ChannelService {
 
     // 4. Tìm user cần thêm
     const targetUser = await this.prisma.user.findFirst({
-      where: dto.email
-        ? { email: dto.email }
-        : { id: dto.userId },
+      where: dto.email ? { email: dto.email } : { id: dto.userId },
     });
 
     if (!targetUser) {
@@ -531,10 +537,7 @@ export class ChannelService {
       (m) => m.role.name === ROLES.CHANNEL_ADMIN,
     ).length;
 
-    if (
-      memberToRemove.role.name === ROLES.CHANNEL_ADMIN &&
-      adminCount === 1
-    ) {
+    if (memberToRemove.role.name === ROLES.CHANNEL_ADMIN && adminCount === 1) {
       throw new BadRequestException(
         'Không thể xóa Admin duy nhất của channel. Hãy chỉ định Admin mới trước.',
       );
@@ -581,7 +584,7 @@ export class ChannelService {
     // 2. Kiểm tra quyền xem danh sách
     // User có quyền nếu: là channel member HOẶC là workspace admin
     const isChannelMember = channel.members.some((m) => m.userId === userId);
-    
+
     if (!isChannelMember) {
       // Kiểm tra có phải Workspace Admin không
       const workspaceMembership = await this.prisma.workspaceMember.findUnique({
@@ -594,7 +597,8 @@ export class ChannelService {
         include: { role: true },
       });
 
-      const isWorkspaceAdmin = workspaceMembership?.role.name === ROLES.WORKSPACE_ADMIN;
+      const isWorkspaceAdmin =
+        workspaceMembership?.role.name === ROLES.WORKSPACE_ADMIN;
 
       if (!isWorkspaceAdmin) {
         throw new ForbiddenException(
@@ -941,7 +945,9 @@ export class ChannelService {
     const membership = channel.members.find((m) => m.userId === userId);
 
     if (!membership) {
-      throw new BadRequestException('Bạn không phải thành viên của channel này');
+      throw new BadRequestException(
+        'Bạn không phải thành viên của channel này',
+      );
     }
 
     // 3. Kiểm tra nếu là Channel Admin duy nhất
@@ -1021,7 +1027,10 @@ export class ChannelService {
     }
 
     // 4. Kiểm tra không thể demote Admin duy nhất
-    if (member.role.name === ROLES.CHANNEL_ADMIN && dto.newRole === 'CHANNEL_MEMBER') {
+    if (
+      member.role.name === ROLES.CHANNEL_ADMIN &&
+      dto.newRole === 'CHANNEL_MEMBER'
+    ) {
       const adminCount = await this.prisma.channelMember.count({
         where: {
           channelId,
@@ -1075,4 +1084,3 @@ export class ChannelService {
     };
   }
 }
-

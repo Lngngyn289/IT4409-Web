@@ -25,4 +25,3 @@ export class ChannelMemberResponseDto {
     avatarUrl?: string;
   };
 }
-

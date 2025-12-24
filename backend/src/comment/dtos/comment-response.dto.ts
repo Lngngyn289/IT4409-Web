@@ -36,4 +36,3 @@ export class CommentResponseDto {
   @ApiProperty()
   author: CommentAuthorDto;
 }
-

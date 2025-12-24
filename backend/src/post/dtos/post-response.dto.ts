@@ -52,9 +52,9 @@ export class PostResponseDto {
 }
 
 export class PostDetailResponseDto extends PostResponseDto {
-  @ApiProperty({ 
+  @ApiProperty({
     type: [CommentPreviewDto],
-    description: '1-3 preview comments' 
+    description: '1-3 preview comments',
   })
   previewComments: CommentPreviewDto[];
 
@@ -78,4 +78,3 @@ export class PostListItemDto {
   @ApiProperty({ description: 'Total number of comments' })
   commentCount: number;
 }
-
