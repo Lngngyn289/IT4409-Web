@@ -137,6 +137,7 @@ function DirectMessageChat() {
   const confirmDelete = () => {
     if (deleteConfirmModal.messageId) {
       deleteMessage(deleteConfirmModal.messageId);
+      setDeleteConfirmModal({ isOpen: false, messageId: null });
     }
   };
 
