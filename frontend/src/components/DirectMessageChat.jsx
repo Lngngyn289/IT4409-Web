@@ -73,7 +73,8 @@ function DirectMessageChat() {
 
         if (data?.messages) {
           if (prepend) {
-            setInitialMessages([...data.messages, ...messages]);
+            // Use functional update to access current messages without depending on them
+            setInitialMessages((currentMessages) => [...data.messages, ...currentMessages]);
           } else {
             setInitialMessages(data.messages);
           }
@@ -86,7 +87,7 @@ function DirectMessageChat() {
         setIsLoadingHistory(false);
       }
     },
-    [conversationId, workspaceId, authFetch, setInitialMessages, messages]
+    [conversationId, workspaceId, authFetch, setInitialMessages]
   );
 
   // Initial fetch
