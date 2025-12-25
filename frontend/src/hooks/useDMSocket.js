@@ -22,6 +22,18 @@ export function useDMSocket(token, conversationId, workspaceId) {
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
 
+  const upsertMessage = useCallback((incomingMessage) => {
+    setMessages((prev) => {
+      const index = prev.findIndex((m) => m.id === incomingMessage.id);
+      if (index !== -1) {
+        const next = [...prev];
+        next[index] = incomingMessage;
+        return next;
+      }
+      return [...prev, incomingMessage];
+    });
+  }, []);
+
   // Initialize socket connection
   useEffect(() => {
     if (!token) {
@@ -84,7 +96,7 @@ export function useDMSocket(token, conversationId, workspaceId) {
 
     // DM Message events
     socket.on("dm:message:new", ({ message }) => {
-      setMessages((prev) => [...prev, message]);
+      upsertMessage(message);
     });
 
     socket.on("dm:message:sent", ({ message }) => {
@@ -93,7 +105,7 @@ export function useDMSocket(token, conversationId, workspaceId) {
 
     socket.on("dm:message:notification", ({ message }) => {
       // New message notification when not in room
-      setMessages((prev) => [...prev, message]);
+      upsertMessage(message);
     });
 
     socket.on("dm:message:deleted", ({ messageId }) => {
@@ -172,7 +184,7 @@ export function useDMSocket(token, conversationId, workspaceId) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token]);
+  }, [token, upsertMessage]);
 
   // Join conversation when conversationId changes
   useEffect(() => {
@@ -183,10 +195,7 @@ export function useDMSocket(token, conversationId, workspaceId) {
 
     // Join new conversation
     socketRef.current.emit("dm:join", { conversationId });
-
-    // Reset state
-    setMessages([]);
-    setTypingUser(null);
+    // Wait for server confirmation before marking as joined
     setIsJoined(false);
 
     return () => {
@@ -222,7 +231,10 @@ export function useDMSocket(token, conversationId, workspaceId) {
   const deleteMessage = useCallback(
     (messageId) => {
       if (!socketRef.current || !conversationId) return;
-      socketRef.current.emit("dm:message:delete", { conversationId, messageId });
+      socketRef.current.emit("dm:message:delete", {
+        conversationId,
+        messageId,
+      });
     },
     [conversationId]
   );
@@ -242,7 +254,11 @@ export function useDMSocket(token, conversationId, workspaceId) {
   const removeReaction = useCallback(
     (messageId, emoji) => {
       if (!socketRef.current || !conversationId) return;
-      socketRef.current.emit("dm:reaction:remove", { conversationId, messageId, emoji });
+      socketRef.current.emit("dm:reaction:remove", {
+        conversationId,
+        messageId,
+        emoji,
+      });
     },
     [conversationId]
   );
@@ -305,4 +321,3 @@ export function useDMSocket(token, conversationId, workspaceId) {
 }
 
 export default useDMSocket;
-

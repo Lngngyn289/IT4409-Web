@@ -4,7 +4,7 @@ import { ChannelController } from './channel.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [],
   controllers: [ChannelController],
   providers: [ChannelService],
   exports: [ChannelService],

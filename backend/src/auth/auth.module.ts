@@ -13,7 +13,6 @@ import { PrismaModule } from '../prisma/prisma.module';
     UserModule,
     ConfigModule,
     EmailModule,
-    PrismaModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -19,7 +19,10 @@ function DirectMessageChat() {
   const [replyTo, setReplyTo] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, messageId: null });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({
+    isOpen: false,
+    messageId: null,
+  });
 
   const {
     isConnected,
@@ -38,6 +41,14 @@ function DirectMessageChat() {
     setInitialMessages,
   } = useDMSocket(accessToken, conversationId, workspaceId);
 
+  // Reset local state when switching conversations
+  useEffect(() => {
+    setInitialMessages([]);
+    setPage(1);
+    setHasMore(true);
+    setReplyTo(null);
+  }, [conversationId, setInitialMessages]);
+
   // Fetch conversation details
   useEffect(() => {
     const fetchConversation = async () => {
@@ -53,7 +64,7 @@ function DirectMessageChat() {
         console.error("Failed to fetch conversation:", err);
       }
     };
-    
+
     if (conversationId) {
       fetchConversation();
     }
@@ -63,7 +74,7 @@ function DirectMessageChat() {
   const fetchMessageHistory = useCallback(
     async (pageNum = 1, prepend = false) => {
       if (!conversationId) return;
-      
+
       try {
         setIsLoadingHistory(true);
         const data = await getDirectMessages(
@@ -76,7 +87,10 @@ function DirectMessageChat() {
         if (data?.messages) {
           if (prepend) {
             // Use functional update to access current messages without depending on them
-            setInitialMessages((currentMessages) => [...data.messages, ...currentMessages]);
+            setInitialMessages((currentMessages) => [
+              ...data.messages,
+              ...currentMessages,
+            ]);
           } else {
             setInitialMessages(data.messages);
           }
@@ -180,8 +194,18 @@ function DirectMessageChat() {
   if (!conversationId) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-gray-400">
-        <svg className="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        <svg
+          className="h-16 w-16 mb-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
         </svg>
         <p className="text-lg font-medium">Chọn một cuộc trò chuyện</p>
         <p className="text-sm">hoặc bắt đầu cuộc trò chuyện mới</p>
@@ -199,11 +223,21 @@ function DirectMessageChat() {
             onClick={() => navigate(`/workspace/${workspaceId}`)}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 lg:hidden"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
-          
+
           {/* User avatar and info */}
           {otherUser && (
             <>
@@ -234,7 +268,9 @@ function DirectMessageChat() {
         {/* Connection status */}
         <div className="flex items-center gap-2">
           <div
-            className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-300"}`}
+            className={`h-2 w-2 rounded-full ${
+              isConnected ? "bg-green-500" : "bg-gray-300"
+            }`}
             title={isConnected ? "Đã kết nối" : "Đang kết nối..."}
           />
         </div>
@@ -280,7 +316,8 @@ function DirectMessageChat() {
               {otherUser.fullName || otherUser.username}
             </p>
             <p className="mt-1 text-sm text-gray-500">
-              Đây là khởi đầu cuộc trò chuyện với {otherUser.fullName || otherUser.username}
+              Đây là khởi đầu cuộc trò chuyện với{" "}
+              {otherUser.fullName || otherUser.username}
             </p>
           </div>
         )}
@@ -316,11 +353,22 @@ function DirectMessageChat() {
           <div className="px-4 py-2">
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <div className="flex space-x-1">
-                <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
-                <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
-                <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
+                <div
+                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <div
+                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <div
+                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: "300ms" }}
+                />
               </div>
-              <span>{typingUser.fullName || typingUser.username} đang nhập...</span>
+              <span>
+                {typingUser.fullName || typingUser.username} đang nhập...
+              </span>
             </div>
           </div>
         )}
@@ -337,13 +385,19 @@ function DirectMessageChat() {
         onCancelReply={() => setReplyTo(null)}
         members={[]}
         disabled={!isConnected}
-        placeholder={otherUser ? `Nhắn tin cho ${otherUser.fullName || otherUser.username}...` : "Nhập tin nhắn..."}
+        placeholder={
+          otherUser
+            ? `Nhắn tin cho ${otherUser.fullName || otherUser.username}...`
+            : "Nhập tin nhắn..."
+        }
       />
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal
         isOpen={deleteConfirmModal.isOpen}
-        onClose={() => setDeleteConfirmModal({ isOpen: false, messageId: null })}
+        onClose={() =>
+          setDeleteConfirmModal({ isOpen: false, messageId: null })
+        }
         onConfirm={confirmDelete}
         title="Xóa tin nhắn"
         message="Bạn có chắc muốn xóa tin nhắn này? Hành động này không thể hoàn tác."
@@ -356,4 +410,3 @@ function DirectMessageChat() {
 }
 
 export default DirectMessageChat;
-

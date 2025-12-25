@@ -5,7 +5,7 @@ import { UploadModule } from '../upload/upload.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [UploadModule, PrismaModule],
+  imports: [UploadModule],
   controllers: [MaterialController],
   providers: [MaterialService],
   exports: [MaterialService],

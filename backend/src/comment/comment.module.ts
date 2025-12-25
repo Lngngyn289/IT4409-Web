@@ -4,7 +4,7 @@ import { CommentService } from './comment.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [],
   controllers: [CommentController],
   providers: [CommentService],
   exports: [CommentService],

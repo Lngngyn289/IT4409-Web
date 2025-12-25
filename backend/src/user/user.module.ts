@@ -8,6 +8,6 @@ import { UploadModule } from '../upload/upload.module';
   controllers: [UserController],
   providers: [UserService],
   exports: [UserService],
-  imports: [PrismaModule, UploadModule],
+  imports: [UploadModule],
 })
 export class UserModule {}

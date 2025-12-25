@@ -185,10 +185,7 @@ export function useChatSocket(token, channelId) {
 
     // Join new channel
     socketRef.current.emit("channel:join", { channelId });
-
-    // Reset state
-    setMessages([]);
-    setTypingUsers([]);
+    // Wait for server confirmation to update joined state
     setIsJoined(false);
 
     return () => {
@@ -245,7 +242,11 @@ export function useChatSocket(token, channelId) {
   const removeReaction = useCallback(
     (messageId, emoji) => {
       if (!socketRef.current || !channelId) return;
-      socketRef.current.emit("reaction:remove", { channelId, messageId, emoji });
+      socketRef.current.emit("reaction:remove", {
+        channelId,
+        messageId,
+        emoji,
+      });
     },
     [channelId]
   );
@@ -314,4 +315,3 @@ export function useChatSocket(token, channelId) {
 }
 
 export default useChatSocket;
-
