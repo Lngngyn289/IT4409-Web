@@ -10,6 +10,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const messageRefs = useRef({});
+  const highlightTimeoutRef = useRef(null);
 
   // Debug: Log token status
   useEffect(() => {
@@ -43,6 +44,8 @@ function ChannelChat({ channelId, channelName, members = [] }) {
 
   // Reset local pagination and message cache when switching channels
   useEffect(() => {
+    // Clean up refs and state when switching channels
+    messageRefs.current = {};
     setInitialMessages([]);
     setPage(1);
     setHasMore(true);
@@ -133,13 +136,31 @@ function ChannelChat({ channelId, channelName, members = [] }) {
 
   const handleJumpToMessage = (messageId) => {
     if (!messageId) return;
+
+    // Clear any existing highlight timeout before setting a new one
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
     const targetEl = messageRefs.current[messageId];
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
       setHighlightMessageId(messageId);
-      setTimeout(() => setHighlightMessageId(null), 1500);
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightMessageId(null);
+        highlightTimeoutRef.current = null;
+      }, 1500);
     }
   };
+
+  // Cleanup highlight timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Filter out current user from typing users
   const otherTypingUsers = typingUsers.filter((u) => u.id !== currentUser?.id);

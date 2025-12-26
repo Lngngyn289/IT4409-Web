@@ -14,6 +14,7 @@ function DirectMessageChat() {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const messageRefs = useRef({});
+  const highlightTimeoutRef = useRef(null);
 
   const [otherUser, setOtherUser] = useState(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -66,6 +67,9 @@ function DirectMessageChat() {
 
   // Reset local state when switching conversations
   useEffect(() => {
+    // Clean up refs and state when switching conversations
+    messageRefs.current = {};
+    setPresenceOnline(false);
     setInitialMessages([]);
     setPage(1);
     setHasMore(true);
@@ -191,13 +195,31 @@ function DirectMessageChat() {
 
   const handleJumpToMessage = (messageId) => {
     if (!messageId) return;
+
+    // Clear any existing highlight timeout before setting a new one
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
     const targetEl = messageRefs.current[messageId];
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
       setHighlightMessageId(messageId);
-      setTimeout(() => setHighlightMessageId(null), 1500);
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightMessageId(null);
+        highlightTimeoutRef.current = null;
+      }, 1500);
     }
   };
+
+  // Cleanup highlight timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Group messages by date
   const groupedMessages = messages.reduce((groups, message) => {
