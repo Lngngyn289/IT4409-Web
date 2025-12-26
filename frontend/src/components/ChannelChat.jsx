@@ -14,6 +14,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
   const messagesContainerRef = useRef(null);
   const messageRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
+  const isInitialLoadRef = useRef(true);
 
   // Debug: Log token status
   useEffect(() => {
@@ -59,6 +60,8 @@ function ChannelChat({ channelId, channelName, members = [] }) {
     setPage(1);
     setHasMore(true);
     setReplyTo(null);
+    // Next render should pin to bottom without animation
+    isInitialLoadRef.current = true;
   }, [channelId, setInitialMessages]);
 
   // Fetch message history from REST API
@@ -74,10 +77,22 @@ function ChannelChat({ channelId, channelName, members = [] }) {
           if (prepend) {
             // IMPORTANT: Use functional update to avoid race condition with socket events
             // This ensures we always merge with the latest messages state instead of overwriting
+            const container = messagesContainerRef.current;
+            const prevScrollHeight = container?.scrollHeight || 0;
+            const prevScrollTop = container?.scrollTop || 0;
+
             setInitialMessages((currentMessages) => [
               ...data.messages,
               ...currentMessages,
             ]);
+
+            // Preserve viewport position after prepending older messages
+            setTimeout(() => {
+              if (!container) return;
+              const newScrollHeight = container.scrollHeight;
+              const heightDelta = newScrollHeight - prevScrollHeight;
+              container.scrollTop = prevScrollTop + heightDelta;
+            }, 0);
           } else {
             setInitialMessages(data.messages);
           }
@@ -103,7 +118,28 @@ function ChannelChat({ channelId, channelName, members = [] }) {
 
   // Scroll to bottom on new messages
   useEffect(() => {
-    if (messagesEndRef.current && !isLoadingHistory) {
+    if (isLoadingHistory) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isNearBottom = distanceFromBottom < 5;
+
+    // On initial load (after switching channels), jump to bottom instantly
+    if (isInitialLoadRef.current) {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+      isInitialLoadRef.current = false;
+      return;
+    }
+
+    // Only auto-scroll on new messages if user is already near the bottom
+    if (isNearBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isLoadingHistory]);
