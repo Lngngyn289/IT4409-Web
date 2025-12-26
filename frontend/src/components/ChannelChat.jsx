@@ -204,11 +204,15 @@ function ChannelChat({ channelId, channelName, members = [] }) {
       );
 
       // Combine: before + target + after
-      const contextMessages = [
+      const contextMessagesRaw = [
         ...(beforeData?.messages || []),
         targetMessage,
         ...(afterData?.messages || []),
       ];
+      // Sort by createdAt ascending to ensure proper chronological order
+      const contextMessages = contextMessagesRaw
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
       // Replace current messages with context
       setInitialMessages(contextMessages);
