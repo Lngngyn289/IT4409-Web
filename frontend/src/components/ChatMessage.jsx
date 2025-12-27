@@ -143,9 +143,11 @@ function ChatMessage({
 
   return (
     <div
-      className={`group relative flex gap-3 px-4 py-2 hover:bg-gray-50 ${
+      className={`group relative flex gap-3 px-4 py-3 hover:bg-gray-100 border-b border-gray-100 ${
         isDeleted ? "opacity-60" : ""
-      } ${isHighlighted ? "bg-amber-50" : ""}`}
+      } ${isHighlighted ? "bg-amber-50" : ""} ${
+        ""
+      }`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => {
         setShowActions(false);
@@ -176,7 +178,9 @@ function ChatMessage({
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
+      <div
+        className="min-w-0 flex-1 max-w-[75%]"
+      >
         {/* Header */}
         <div className="flex items-baseline gap-2">
           <span
@@ -227,11 +231,11 @@ function ChatMessage({
 
         {/* Message content */}
         {isDeleted ? (
-          <p className="mt-1 text-sm text-gray-400 italic">
+          <p className="mt-1 text-base text-gray-400 italic leading-relaxed">
             Tin nhắn đã bị xóa
           </p>
         ) : (
-          <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap break-words">
+          <p className="mt-1 text-base text-gray-800 whitespace-pre-wrap break-words leading-relaxed">
             {renderContent(message.content)}
           </p>
         )}
@@ -376,7 +380,11 @@ function ChatMessage({
 
       {/* Action buttons */}
       {showActions && !isDeleted && (
-        <div className="absolute right-4 top-1 flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-sm">
+        <div
+          className={`absolute top-1 flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-sm ${
+            "right-4"
+          }`}
+        >
           {/* Emoji reaction */}
           <div className="relative" ref={emojiPickerRef}>
             <button

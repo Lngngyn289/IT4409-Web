@@ -239,61 +239,39 @@ function ChatInput({
           </div>
         )}
 
-        {/* Text input */}
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            {/* File preview */}
-            {pendingFiles.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {pendingFiles.map((file, index) => (
-                  <div key={index} className="relative">
-                    {file.type.startsWith('image/') ? (
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={file.name}
-                        className="h-16 w-16 rounded-lg object-cover border border-gray-200"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                        <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs hover:bg-red-600"
-                    >
-                      ×
-                    </button>
-                    <p className="text-xs text-gray-500 mt-1 max-w-16 truncate">{file.name}</p>
+        {/* File preview */}
+        {pendingFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {pendingFiles.map((file, index) => (
+              <div key={index} className="relative w-16">
+                {file.type.startsWith('image/') ? (
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                    <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
                   </div>
-                ))}
+                )}
+                <button
+                  onClick={() => removeFile(index)}
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs hover:bg-red-600"
+                >
+                  ×
+                </button>
+                <p className="mt-1 w-16 truncate text-xs text-gray-500">{file.name}</p>
               </div>
-            )}
-
-            <textarea
-              ref={inputRef}
-              value={content}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              onBlur={onStopTyping}
-              placeholder={placeholder}
-              disabled={disabled}
-              rows={1}
-              className="w-full resize-none rounded-xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-              style={{
-                minHeight: "42px",
-                maxHeight: "120px",
-              }}
-              onInput={(e) => {
-                e.target.style.height = "42px";
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-              }}
-            />
+            ))}
           </div>
+        )}
 
-          {/* File upload button */}
+        {/* Text input + send (grouped) + attach (outside) */}
+        <div className="flex items-end gap-2">
+          {/* File upload button (outside group) */}
           <input
             ref={fileInputRef}
             type="file"
@@ -303,21 +281,11 @@ function ChatInput({
             className="hidden"
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-50"
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-50"
             title="Đính kèm file"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-          </button>
-
-          {/* Send button */}
-          <button
-            onClick={handleSend}
-            disabled={(!content.trim() && pendingFiles.length === 0) || disabled}
-            className="flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             <svg
               className="h-5 w-5"
@@ -329,10 +297,63 @@ function ChatInput({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
               />
             </svg>
           </button>
+
+          {/* Group: textarea + send button (send centered vertically) */}
+          <div
+            className={`flex min-h-[42px] flex-1 items-center gap-2 rounded-xl border border-gray-300 bg-gray-50 px-2 focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-indigo-500 ${
+              disabled ? "opacity-50" : ""
+            }`}
+          >
+            <textarea
+              ref={inputRef}
+              value={content}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onBlur={onStopTyping}
+              placeholder={placeholder}
+              disabled={disabled}
+              rows={1}
+              className="w-full flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
+              style={{
+                height: "42px",
+                minHeight: "42px",
+                maxHeight: "120px",
+              }}
+              onInput={(e) => {
+                const el = e.target;
+                el.style.height = "42px";
+                el.style.height = Math.min(el.scrollHeight, 120) + "px";
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={
+                (!content.trim() && pendingFiles.length === 0) || disabled
+              }
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              title="Gửi"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

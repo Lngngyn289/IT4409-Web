@@ -4,25 +4,26 @@ import { useChatSocket } from "../hooks/useChatSocket";
 import { useToast } from "../contexts/ToastContext";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
-import OnlineUsersModal from "./OnlineUsersModal";
 import ChatSearchBar from "./ChatSearchBar";
 import { uploadMessageFiles, searchChannelMessages } from "../api";
-import { Search } from "lucide-react";
 
-function ChannelChat({ channelId, channelName, members = [] }) {
+function ChannelChat({
+  channelId,
+  channelName,
+  members = [],
+  onOnlineUsersChange,
+  searchInputRef,
+  searchFocusSignal,
+  isSearchOpen = true,
+}) {
   const { accessToken, currentUser, authFetch } = useAuth();
+  const { addToast } = useToast();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const messageRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
   const isInitialLoadRef = useRef(true);
-
-  // Debug: Log token status
-  useEffect(() => {
-    console.log("ChannelChat: accessToken available:", !!accessToken);
-    console.log("ChannelChat: currentUser:", currentUser?.username);
-    console.log("ChannelChat: channelId:", channelId);
-  }, [accessToken, currentUser, channelId]);
+  const forceScrollToBottomRef = useRef(false);
 
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isJumping, setIsJumping] = useState(false);
@@ -31,10 +32,17 @@ function ChannelChat({ channelId, channelName, members = [] }) {
   const [page, setPage] = useState(1);
   const [highlightMessageId, setHighlightMessageId] = useState(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [isOnlineListOpen, setIsOnlineListOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    if (isSearchOpen) return;
+    // When search is closed, reset search state so the main timeline is visible.
+    if (searchQuery) setSearchQuery("");
+    if (searchResults.length) setSearchResults([]);
+    if (isSearching) setIsSearching(false);
+  }, [isSearchOpen, searchQuery, searchResults.length, isSearching]);
 
   const {
     isConnected,
@@ -53,6 +61,11 @@ function ChannelChat({ channelId, channelName, members = [] }) {
     setInitialMessages,
     updateMessage,
   } = useChatSocket(accessToken, channelId);
+
+  useEffect(() => {
+    if (typeof onOnlineUsersChange !== "function") return;
+    onOnlineUsersChange(onlineUsers);
+  }, [onlineUsers, onOnlineUsersChange]);
 
   // Reset local pagination and message cache when switching channels
   useEffect(() => {
@@ -140,6 +153,17 @@ function ChannelChat({ channelId, channelName, members = [] }) {
       return;
     }
 
+    // If we just sent a message, always scroll to bottom.
+    if (forceScrollToBottomRef.current) {
+      forceScrollToBottomRef.current = false;
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+      return;
+    }
+
     // Only auto-scroll on new messages if user is already near the bottom
     if (isNearBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -179,6 +203,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
 
   // Handle send message
   const handleSend = (content, replyToId, mentionedUserIds) => {
+    forceScrollToBottomRef.current = true;
     sendMessage(content, replyToId, mentionedUserIds);
     setReplyTo(null);
   };
@@ -191,6 +216,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
     files
   ) => {
     try {
+      forceScrollToBottomRef.current = true;
       // Send text message first
       const message = await sendMessage(content, replyToId, mentionedUserIds);
 
@@ -211,7 +237,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
       setReplyTo(null);
     } catch (error) {
       console.error("Failed to send message with files:", error);
-      toast.error("Không thể gửi tin nhắn với file đính kèm");
+      addToast("Không thể gửi tin nhắn với file đính kèm", "error");
     }
   };
 
@@ -228,9 +254,8 @@ function ChannelChat({ channelId, channelName, members = [] }) {
   };
 
   // Handle search
-  const handleSearch = useCallback(
+  const performSearch = useCallback(
     async (query) => {
-      setSearchQuery(query);
       if (!query.trim()) {
         setSearchResults([]);
         setIsSearching(false);
@@ -254,6 +279,16 @@ function ChannelChat({ channelId, channelName, members = [] }) {
     },
     [channelId, authFetch]
   );
+
+  const handleSearchResultClick = (messageId) => {
+    if (!messageId) return;
+    // Keep the search bar visible, but clear the query so the main timeline renders.
+    setSearchQuery("");
+    setSearchResults([]);
+    setTimeout(() => {
+      handleJumpToMessage(messageId);
+    }, 0);
+  };
 
   const handleJumpToMessage = async (messageId) => {
     if (!messageId) return;
@@ -394,69 +429,16 @@ function ChannelChat({ channelId, channelName, members = [] }) {
 
   return (
     <div className="flex h-full flex-col bg-white relative">
-      {/* Header with online status */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
-        <div className="flex items-center gap-2">
-          {/* Connection status */}
-          <div
-            className={`h-2 w-2 rounded-full ${
-              isConnected ? "bg-green-500" : "bg-gray-300"
-            }`}
-            title={isConnected ? "Đã kết nối" : "Đang kết nối..."}
-          />
-          <span className="text-sm text-gray-500">
-            {isConnected
-              ? isJoined
-                ? `${onlineUsers.length} người đang online`
-                : "Đang tham gia..."
-              : "Đang kết nối..."}
-          </span>
-        </div>
-
-        {/* Online users avatars + View button */}
-        <div className="flex items-center gap-2">
-          {onlineUsers.length > 0 && (
-            <div className="flex -space-x-2">
-              {onlineUsers.slice(0, 2).map((user) => (
-                <div
-                  key={user.id}
-                  className="flex h-7 w-7 items-center justify-center flex-shrink-0 rounded-full border-2 border-white bg-gradient-to-br from-green-400 to-emerald-500 text-xs font-medium text-white overflow-hidden"
-                  title={user.fullName || user.username}
-                >
-                  {user.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt={user.fullName || user.username}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    user.fullName?.slice(0, 1) || user.username?.slice(0, 1)
-                  )}
-                </div>
-              ))}
-              {onlineUsers.length > 2 && (
-                <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gray-200 text-xs font-medium text-gray-600">
-                  +{onlineUsers.length - 2}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* View online list button */}
-          {onlineUsers.length > 0 && (
-            <button
-              onClick={() => setIsOnlineListOpen(true)}
-              className="ml-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-90"
-              style={{ backgroundColor: "rgb(30,41,59)" }}
-            >
-              Xem tất cả
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Search bar */}
-      <ChatSearchBar onSearch={handleSearch} />
+      {isSearchOpen && (
+        <ChatSearchBar
+          onSearch={performSearch}
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          inputRef={searchInputRef}
+          focusSignal={searchFocusSignal}
+          isSearching={isSearching}
+        />
+      )}
 
       {/* Error message */}
       {error && (
@@ -466,7 +448,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
       {/* Messages area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto bg-gray-50"
         onScroll={handleScroll}
       >
         {/* Loading indicator */}
@@ -514,7 +496,6 @@ function ChannelChat({ channelId, channelName, members = [] }) {
           // Search results
           <div className="p-4">
             <div className="mb-4 flex items-center gap-2">
-              <Search className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-600">
                 Kết quả tìm kiếm cho "{searchQuery}"
               </span>
@@ -524,7 +505,23 @@ function ChannelChat({ channelId, channelName, members = [] }) {
             </div>
             {searchResults.length > 0 ? (
               searchResults.map((message) => (
-                <div key={message.id} className="mb-2">
+                <div
+                  key={message.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    if (e.target.closest("button")) return;
+                    handleSearchResultClick(message.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    if (e.target.closest("button")) return;
+                    e.preventDefault();
+                    handleSearchResultClick(message.id);
+                  }}
+                  className="mb-2 block w-full text-left"
+                  title="Nhấp để nhảy đến tin nhắn"
+                >
                   <ChatMessage
                     message={message}
                     currentUserId={currentUser?.id}
@@ -647,12 +644,6 @@ function ChannelChat({ channelId, channelName, members = [] }) {
         disabled={!isConnected}
       />
 
-      {/* Online Users Modal */}
-      <OnlineUsersModal
-        isOpen={isOnlineListOpen}
-        onClose={() => setIsOnlineListOpen(false)}
-        onlineUsers={onlineUsers}
-      />
     </div>
   );
 }

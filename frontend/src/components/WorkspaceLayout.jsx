@@ -140,7 +140,7 @@ function WorkspaceLayout() {
             <div className="flex items-center">
               <button
                 onClick={() => navigate("/workspaces")}
-                className="px-3 py-3 text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="px-3 py-2.5 text-slate-400 hover:text-white hover:bg-slate-800 transition"
                 title="Back to workspaces"
               >
                 <svg
@@ -157,7 +157,7 @@ function WorkspaceLayout() {
                   />
                 </svg>
               </button>
-              <div className="flex flex-1 items-center justify-between px-2 py-3 transition hover:bg-slate-800 focus:outline-none">
+              <div className="flex flex-1 items-center justify-between px-2 py-2.5 transition hover:bg-slate-800 focus:outline-none">
                 <h1 className="truncate text-lg font-bold text-white">
                   {workspace.name}
                 </h1>
@@ -166,7 +166,7 @@ function WorkspaceLayout() {
           </div>
 
           {/* Channels List */}
-          <div className="flex-1 overflow-y-auto px-2 py-4">
+          <div className="flex-1 overflow-y-auto px-2 py-3">
             {/* Channels Section Header */}
             <div className="mb-2 flex items-center justify-between px-2">
               <button className="flex items-center text-sm font-medium text-slate-400 hover:text-slate-200">
@@ -292,7 +292,7 @@ function WorkspaceLayout() {
           </div>
 
           {/* Admin Buttons at Bottom - Horizontal Icons */}
-          <div className="border-t border-slate-800 flex items-center justify-around px-3 py-4">
+          <div className="border-t border-slate-800 flex items-center justify-around px-3 py-3">
             <button
               onClick={() => setAdminPanelTab("settings")}
               title="Cài đặt chung"

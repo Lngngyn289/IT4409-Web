@@ -1,27 +1,45 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
-export default function ChatSearchBar({ onSearch, placeholder = "Tìm kiếm tin nhắn..." }) {
-  const [query, setQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const inputRef = useRef(null);
+export default function ChatSearchBar({
+  onSearch,
+  placeholder = "Tìm kiếm tin nhắn...",
+  value,
+  onValueChange,
+  inputRef: externalInputRef,
+  focusSignal,
+  isSearching: isSearchingProp,
+}) {
+  const [uncontrolledQuery, setUncontrolledQuery] = useState("");
+  const [isSearchingLocal, setIsSearchingLocal] = useState(false);
+  const internalInputRef = useRef(null);
+  const inputRef = externalInputRef || internalInputRef;
+
+  const query = typeof value === "string" ? value : uncontrolledQuery;
+  const setQuery = typeof onValueChange === "function" ? onValueChange : setUncontrolledQuery;
+  const isSearching = typeof isSearchingProp === "boolean" ? isSearchingProp : isSearchingLocal;
 
   // Debounced search
   useEffect(() => {
     if (!query.trim()) {
-      setIsSearching(false);
+      if (typeof isSearchingProp !== "boolean") setIsSearchingLocal(false);
       onSearch("");
       return;
     }
 
-    setIsSearching(true);
+    if (typeof isSearchingProp !== "boolean") setIsSearchingLocal(true);
     const timeoutId = setTimeout(() => {
       onSearch(query.trim());
-      setIsSearching(false);
+      if (typeof isSearchingProp !== "boolean") setIsSearchingLocal(false);
     }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [query, onSearch]);
+
+  useEffect(() => {
+    if (focusSignal === undefined || focusSignal === null) return;
+    inputRef.current?.focus();
+  }, [focusSignal, inputRef]);
 
   const clearSearch = () => {
     setQuery("");
@@ -29,7 +47,7 @@ export default function ChatSearchBar({ onSearch, placeholder = "Tìm kiếm tin
   };
 
   return (
-    <div className="relative flex items-center gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50">
+    <div className="relative flex items-center gap-2 px-4 py-1.5 border-b border-gray-100 bg-white">
       <Search className="h-4 w-4 text-gray-400" />
       <input
         ref={inputRef}
@@ -41,6 +59,7 @@ export default function ChatSearchBar({ onSearch, placeholder = "Tìm kiếm tin
       />
       {query && (
         <button
+          type="button"
           onClick={clearSearch}
           className="p-1 text-gray-400 hover:text-gray-600"
         >
