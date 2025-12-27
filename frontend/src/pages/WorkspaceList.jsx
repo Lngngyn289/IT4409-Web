@@ -227,8 +227,16 @@ function WorkspaceList() {
                   <div className="absolute -right-4 -top-4 h-8 w-8 rotate-45 bg-gradient-to-br from-yellow-400 to-amber-500 opacity-0 transition-all duration-300 group-hover:opacity-100"></div>
                   <div className="absolute inset-0 bg-gradient-to-br from-red-100/0 to-amber-100/0 transition-all duration-300 group-hover:from-red-100/20 group-hover:to-amber-100/20"></div>
 
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleWorkspaceClick(workspace.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleWorkspaceClick(workspace.id);
+                      }
+                    }}
                     className="relative flex w-full flex-col p-5 text-left"
                   >
                     <div className="mb-4 flex items-start justify-between">
@@ -248,6 +256,7 @@ function WorkspaceList() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/workspace/${workspace.id}/admin`);
@@ -272,7 +281,7 @@ function WorkspaceList() {
                       <span>Mở workspace</span>
                       <ChevronRight className="h-4 w-4 group-hover:translate-x-2 transition-transform" />
                     </div>
-                  </button>
+                  </div>
                 </div>
               ))}
             </div>
