@@ -388,15 +388,17 @@ export default function SearchBar() {
           channelId={previewChannelId}
           workspaceId={workspaceId}
           onClose={() => {
+            const currentQuery = query;
             setPreviewChannelId(null);
             setQuery("");
-            saveToRecentSearches(query);
+            saveToRecentSearches(currentQuery);
           }}
           onSuccess={(channelId) => {
+            const currentQuery = query;
             navigate(`/workspace/${workspaceId}/channel/${channelId}`);
             setPreviewChannelId(null);
             setQuery("");
-            saveToRecentSearches(query);
+            saveToRecentSearches(currentQuery);
           }}
         />
       )}
