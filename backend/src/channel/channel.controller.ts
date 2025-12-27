@@ -23,6 +23,7 @@ import {
 } from './dtos/channel-response.dto';
 import { ChannelMemberResponseDto } from './dtos/channel-member-response.dto';
 import { ChannelJoinRequestResponseDto } from './dtos/channel-join-request-response.dto';
+import { ChannelPreviewResponseDto } from './dtos/channel-preview-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('channels')
@@ -86,6 +87,38 @@ export class ChannelController {
   ): Promise<ChannelListItemDto[]> {
     const userId = req.user.id;
     return this.channelService.findAllByUser(userId, workspaceId);
+  }
+
+  /**
+   * GET /api/channels/:channelId/preview
+   * Preview channel mà không cần là member
+   * Bất kỳ user nào trong workspace đều có thể preview
+   */
+  @Get(':channelId/preview')
+  @ApiOperation({
+    summary: 'Preview channel mà không cần là member',
+    description:
+      'Xem thông tin cơ bản của channel. Bất kỳ user nào trong workspace đều có thể preview.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin preview channel',
+    type: ChannelPreviewResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Không thuộc workspace này',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Channel không tồn tại',
+  })
+  async previewChannel(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+  ): Promise<ChannelPreviewResponseDto> {
+    const userId = req.user.id;
+    return this.channelService.previewChannel(userId, channelId);
   }
 
   /**
@@ -425,6 +458,46 @@ export class ChannelController {
   ): Promise<{ message: string; channelId?: string; requestId?: string }> {
     const userId = req.user.id;
     return this.channelService.joinChannelByCode(userId, joinChannelDto);
+  }
+
+  /**
+   * POST /api/channels/:channelId/join
+   * Join channel trực tiếp bằng channelId
+   * Public: Join thẳng, Private: Tạo request
+   */
+  @Post(':channelId/join')
+  @ApiOperation({
+    summary: 'Join channel trực tiếp bằng channelId',
+    description:
+      'Public channel: Join thẳng. Private channel: Tạo join request, chờ admin duyệt.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Join thành công hoặc request đã được tạo',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        channelId: { type: 'string' },
+        requestId: { type: 'string' },
+      },
+      required: ['message'],
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Đã là member hoặc đã gửi request trước đó',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Channel không tồn tại',
+  })
+  async joinChannelById(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+  ): Promise<{ message: string; channelId?: string; requestId?: string }> {
+    const userId = req.user.id;
+    return this.channelService.joinChannelById(userId, channelId);
   }
 
   /**

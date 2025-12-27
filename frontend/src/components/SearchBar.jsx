@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { Search, Hash, User, X, Clock } from "lucide-react";
 import useAuth from "../hooks/useAuth";
 import { searchWorkspace } from "../api";
+import ModalPreviewChannel from "./ModalPreviewChannel";
 
 const RECENT_SEARCHES_KEY = "workspace_recent_searches";
 const MAX_RECENT_SEARCHES = 3;
@@ -14,6 +15,7 @@ export default function SearchBar() {
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState([]);
+  const [previewChannelId, setPreviewChannelId] = useState(null);
   const { authFetch } = useAuth();
   const { workspaceId } = useParams();
   const navigate = useNavigate();
@@ -132,9 +134,18 @@ export default function SearchBar() {
     const channelsCount = results.channels.length;
 
     if (index < channelsCount) {
-      // Navigate to channel
+      // Use isMember flag from search results to determine navigation
       const channel = results.channels[index];
-      navigate(`/workspace/${workspaceId}/channel/${channel.id}`);
+
+      if (channel.isMember) {
+        // User is a member, navigate directly
+        navigate(`/workspace/${workspaceId}/channel/${channel.id}`);
+      } else {
+        // User is not a member, show preview modal
+        setPreviewChannelId(channel.id);
+        setIsOpen(false);
+        return; // Don't save to recent or close yet
+      }
     } else {
       // Navigate to direct message
       const member = results.members[index - channelsCount];
@@ -239,30 +250,65 @@ export default function SearchBar() {
               {/* Channels Section */}
               {results.channels.length > 0 && (
                 <div>
-                  <div className="sticky top-0 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                  <div className="sticky top-0 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
                     Channels
                   </div>
+
                   {results.channels.map((channel, index) => (
                     <button
                       key={channel.id}
                       onClick={() => handleSelectResult(index)}
                       className={`flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors ${
                         selectedIndex === index
-                          ? "bg-indigo-50 text-indigo-900"
+                          ? "bg-slate-100 text-slate-900"
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
+                      {/* ICON */}
                       <div
                         className={`flex h-8 w-8 items-center justify-center rounded-lg ${
                           selectedIndex === index
-                            ? "bg-indigo-500 text-white"
-                            : "bg-slate-200 text-slate-600"
+                            ? "bg-slate-800 text-white"
+                            : channel.isPrivate
+                            ? "bg-slate-200 text-slate-700"
+                            : "bg-slate-100 text-slate-800"
                         }`}
                       >
-                        <Hash className="h-4 w-4" />
+                        {channel.isPrivate ? (
+                          /* 🔒 LOCK */
+                          <svg width="16" height="16" viewBox="0 0 16 16">
+                            <path
+                              fill="currentColor"
+                              fillRule="evenodd"
+                              clipRule="evenodd"
+                              d="M4 6V4C4 1.79086 5.79086 0 8 0C10.2091 0 12 1.79086 12 4V6H14V16H2V6H4ZM6 4C6 2.89543 6.89543 2 8 2C9.10457 2 10 2.89543 10 4V6H6V4ZM7 13V9H9V13H7Z"
+                            />
+                          </svg>
+                        ) : (
+                          /* 🌍 GLOBE */
+                          <svg width="16" height="16" viewBox="0 0 24 24">
+                            <path
+                              fill="currentColor"
+                              d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10
+                   10-4.477 10-10S17.523 2 12 2zm6.93 9h-2.02a15.6 15.6 0 0 0-1.45-5.11
+                   8.03 8.03 0 0 1 3.47 5.11zM12 4c.9 1.2 1.67 3.04 2.02 5H9.98
+                   C10.33 7.04 11.1 5.2 12 4zM4.07 13h2.02
+                   c.25 1.85.8 3.61 1.45 5.11A8.03 8.03 0 0 1 4.07 13zm2.02-2H4.07
+                   a8.03 8.03 0 0 1 3.47-5.11c-.65 1.5-1.2 3.26-1.45 5.11zM12 20
+                   c-.9-1.2-1.67-3.04-2.02-5h4.04
+                   c-.35 1.96-1.12 3.8-2.02 5zm2.46-1.89
+                   c.65-1.5 1.2-3.26 1.45-5.11h2.02
+                   a8.03 8.03 0 0 1-3.47 5.11zM15.91 11
+                   c-.25-1.85-.8-3.61-1.45-5.11
+                   A8.03 8.03 0 0 1 19.93 11h-2.02z"
+                            />
+                          </svg>
+                        )}
                       </div>
+
+                      {/* TEXT */}
                       <div className="flex-1 overflow-hidden">
-                        <div className="truncate font-medium">
+                        <div className="truncate font-semibold text-slate-900">
                           {channel.name}
                         </div>
                         {channel.description && (
@@ -271,8 +317,10 @@ export default function SearchBar() {
                           </div>
                         )}
                       </div>
+
+                      {/* PRIVATE BADGE */}
                       {channel.isPrivate && (
-                        <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                        <span className="rounded bg-slate-800 px-2 py-0.5 text-xs font-medium text-white">
                           Private
                         </span>
                       )}
@@ -332,6 +380,27 @@ export default function SearchBar() {
             </div>
           ) : null}
         </div>
+      )}
+
+      {/* Preview Channel Modal */}
+      {previewChannelId && (
+        <ModalPreviewChannel
+          channelId={previewChannelId}
+          workspaceId={workspaceId}
+          onClose={() => {
+            const currentQuery = query;
+            setPreviewChannelId(null);
+            setQuery("");
+            saveToRecentSearches(currentQuery);
+          }}
+          onSuccess={(channelId) => {
+            const currentQuery = query;
+            navigate(`/workspace/${workspaceId}/channel/${channelId}`);
+            setPreviewChannelId(null);
+            setQuery("");
+            saveToRecentSearches(currentQuery);
+          }}
+        />
       )}
     </div>
   );

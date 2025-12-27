@@ -309,10 +309,6 @@ function ChannelDetail() {
               </h2>
             </div>
 
-            {channel.description && (
-              <p className="text-sm text-gray-500">{channel.description}</p>
-            )}
-
             {channel.joinCode && (
               <div
                 className="mt-1 flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
