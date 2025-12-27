@@ -11,6 +11,7 @@ import {
 } from "../api";
 import useAuth from "../hooks/useAuth";
 import { useToast } from "../contexts/ToastContext";
+import { useMeetingContext } from "../contexts/MeetingContext";
 import UpdateChannelModal from "./UpdateChannelModal";
 import AddChannelMemberModal from "./AddChannelMemberModal";
 import ChannelMembersModal from "./ChannelMembersModal";
@@ -24,6 +25,7 @@ function ChannelDetail() {
   const { workspace, refreshChannels } = useOutletContext();
   const { currentUser, authFetch } = useAuth();
   const { addToast } = useToast();
+  const { isInMeeting, setIsInMeeting } = useMeetingContext();
   const navigate = useNavigate();
 
   const [channel, setChannel] = useState(null);
@@ -49,7 +51,7 @@ function ChannelDetail() {
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
-  const [isInMeeting, setIsInMeeting] = useState(false); // Track if user is in a meeting
+  const [isMeetingMinimized, setIsMeetingMinimized] = useState(false);
 
   const fetchChannelData = useCallback(
     async (silent = false) => {
@@ -67,7 +69,7 @@ function ChannelDetail() {
         if (!silent) setIsLoading(false);
       }
     },
-    [channelId, authFetch, addToast],
+    [channelId, authFetch, addToast]
   );
 
   const fetchPosts = useCallback(async () => {
@@ -95,7 +97,7 @@ function ChannelDetail() {
         setIsPostDetailLoading(false);
       }
     },
-    [channelId, authFetch, addToast],
+    [channelId, authFetch, addToast]
   );
 
   const fetchComments = useCallback(
@@ -110,7 +112,7 @@ function ChannelDetail() {
         setIsCommentsLoading(false);
       }
     },
-    [channelId, authFetch, addToast],
+    [channelId, authFetch, addToast]
   );
 
   useEffect(() => {
@@ -175,7 +177,12 @@ function ChannelDetail() {
     if (!commentContent.trim() || !selectedPostId) return;
     setIsCommenting(true);
     try {
-      await addPostComment(channelId, selectedPostId, commentContent.trim(), authFetch);
+      await addPostComment(
+        channelId,
+        selectedPostId,
+        commentContent.trim(),
+        authFetch
+      );
       setCommentContent("");
       fetchComments(selectedPostId);
       fetchPostDetail(selectedPostId);
@@ -212,10 +219,30 @@ function ChannelDetail() {
   const isChannelAdmin = channel?.myRole === "CHANNEL_ADMIN";
   const canManage = isWorkspaceAdmin || isChannelAdmin;
 
+  const handleMeetingStateChange = (joined) => {
+    setIsInMeeting(joined);
+    if (!joined) {
+      setIsMeetingMinimized(false);
+    }
+  };
+
+  const toggleMeetingMinimize = () => {
+    const next = !isMeetingMinimized;
+    setIsMeetingMinimized(next);
+    if (next && activeTab === "meeting") {
+      setActiveTab("chat");
+    }
+    if (!next) {
+      setActiveTab("meeting");
+    }
+  };
+
+  const hideChrome = isInMeeting && !isMeetingMinimized;
+
   return (
     <div className="flex h-full flex-col">
-      {/* Header - Hide when in meeting */}
-      {!isInMeeting && (
+      {/* Header - Hide when in full meeting mode */}
+      {!hideChrome && (
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
           <div>
             <div className="flex items-center gap-2">
@@ -296,8 +323,18 @@ function ChannelDetail() {
               className="rounded-lg p-2 text-red-400 hover:bg-red-50 hover:text-red-600"
               title="Rời channel"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
               </svg>
             </button>
           </div>
@@ -305,11 +342,14 @@ function ChannelDetail() {
       )}
 
       {/* Tabs */}
-      {!isInMeeting && (
+      {!hideChrome && (
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px px-6">
             <button
-              onClick={() => setActiveTab("posts")}
+              onClick={() => {
+                setActiveTab("posts");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "posts"
                   ? "border-indigo-500 text-indigo-600"
@@ -319,7 +359,10 @@ function ChannelDetail() {
               Bài đăng
             </button>
             <button
-              onClick={() => setActiveTab("chat")}
+              onClick={() => {
+                setActiveTab("chat");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "chat"
                   ? "border-indigo-500 text-indigo-600"
@@ -329,7 +372,10 @@ function ChannelDetail() {
               💬 Chat
             </button>
             <button
-              onClick={() => setActiveTab("meeting")}
+              onClick={() => {
+                setActiveTab("meeting");
+                setIsMeetingMinimized(false);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "meeting"
                   ? "border-indigo-500 text-indigo-600"
@@ -339,7 +385,10 @@ function ChannelDetail() {
               🎥 Meeting
             </button>
             <button
-              onClick={() => setActiveTab("files")}
+              onClick={() => {
+                setActiveTab("files");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "files"
                   ? "border-indigo-500 text-indigo-600"
@@ -357,7 +406,12 @@ function ChannelDetail() {
         {/* Posts Tab */}
         <div
           className="h-full overflow-y-auto absolute inset-0"
-          style={{ display: activeTab === "posts" && !isInMeeting ? "block" : "none" }}
+          style={{
+            display:
+              activeTab === "posts" && (!isInMeeting || isMeetingMinimized)
+                ? "block"
+                : "none",
+          }}
         >
           <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
             <form
@@ -396,7 +450,9 @@ function ChannelDetail() {
 
             <div className="rounded-xl border border-gray-200 bg-white">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <h3 className="text-sm font-semibold text-gray-900">Danh sách bài đăng</h3>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Danh sách bài đăng
+                </h3>
                 {isPostsLoading && (
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
@@ -428,11 +484,15 @@ function ChannelDetail() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2 text-sm">
                             <span className="font-semibold text-gray-900">
-                              {post.author?.fullName || post.author?.username || "Ẩn danh"}
+                              {post.author?.fullName ||
+                                post.author?.username ||
+                                "Ẩn danh"}
                             </span>
                             {post.createdAt && (
                               <span className="text-xs text-gray-500">
-                                {new Date(post.createdAt).toLocaleString("vi-VN")}
+                                {new Date(post.createdAt).toLocaleString(
+                                  "vi-VN"
+                                )}
                               </span>
                             )}
                             <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
@@ -461,7 +521,12 @@ function ChannelDetail() {
         {/* Chat Tab */}
         <div
           className="h-full absolute inset-0"
-          style={{ display: activeTab === "chat" && !isInMeeting ? "block" : "none" }}
+          style={{
+            display:
+              activeTab === "chat" && (!isInMeeting || isMeetingMinimized)
+                ? "block"
+                : "none",
+          }}
         >
           <ChannelChat
             channelId={channelId}
@@ -472,20 +537,33 @@ function ChannelDetail() {
 
         {/* Meeting Tab - Always mounted to keep video state */}
         <div
-          className="h-full absolute inset-0"
-          style={{ display: activeTab === "meeting" || isInMeeting ? "block" : "none" }}
+          className={`h-full absolute inset-0 ${
+            isMeetingMinimized && activeTab !== "meeting"
+              ? "pointer-events-none"
+              : ""
+          }`}
+          style={{
+            display: activeTab === "meeting" || isInMeeting ? "block" : "none",
+          }}
         >
           <ChannelMeeting
             channelId={channelId}
             isChannelAdmin={isChannelAdmin}
-            onMeetingStateChange={setIsInMeeting}
+            onMeetingStateChange={handleMeetingStateChange}
+            isMinimized={isMeetingMinimized}
+            onToggleMinimize={toggleMeetingMinimize}
           />
         </div>
 
         {/* Files Tab */}
         <div
           className="h-full overflow-y-auto absolute inset-0"
-          style={{ display: activeTab === "files" && !isInMeeting ? "block" : "none" }}
+          style={{
+            display:
+              activeTab === "files" && (!isInMeeting || isMeetingMinimized)
+                ? "block"
+                : "none",
+          }}
         >
           <ChannelFiles channelId={channelId} isChannelAdmin={isChannelAdmin} />
         </div>
@@ -496,10 +574,25 @@ function ChannelDetail() {
         <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 px-4 py-10 backdrop-blur-sm">
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl max-h-[85vh] overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-              <h3 className="text-base font-semibold text-gray-900">Chi tiết bài đăng</h3>
-              <button onClick={() => setIsPostDetailOpen(false)} className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <h3 className="text-base font-semibold text-gray-900">
+                Chi tiết bài đăng
+              </h3>
+              <button
+                onClick={() => setIsPostDetailOpen(false)}
+                className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -514,29 +607,50 @@ function ChannelDetail() {
                 <div className="space-y-6 px-6 py-5">
                   <div className="flex items-start gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 uppercase">
-                      {postDetail.author?.fullName ? postDetail.author.fullName.slice(0, 2) : postDetail.author?.username?.slice(0, 2) || "??"}
+                      {postDetail.author?.fullName
+                        ? postDetail.author.fullName.slice(0, 2)
+                        : postDetail.author?.username?.slice(0, 2) || "??"}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-gray-900">
-                          {postDetail.author?.fullName || postDetail.author?.username || "Ẩn danh"}
+                          {postDetail.author?.fullName ||
+                            postDetail.author?.username ||
+                            "Ẩn danh"}
                         </p>
-                        {postDetail.createdAt && <span className="text-xs text-gray-500">{new Date(postDetail.createdAt).toLocaleString("vi-VN")}</span>}
+                        {postDetail.createdAt && (
+                          <span className="text-xs text-gray-500">
+                            {new Date(postDetail.createdAt).toLocaleString(
+                              "vi-VN"
+                            )}
+                          </span>
+                        )}
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{postDetail.content}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">
+                        {postDetail.content}
+                      </p>
                     </div>
                   </div>
 
                   <div className="rounded-lg border border-gray-100 bg-gray-50">
                     <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                      <h4 className="text-sm font-semibold text-gray-900">Bình luận</h4>
-                      <span className="text-xs text-gray-500">{(postComments?.length ?? 0)} bình luận</span>
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        Bình luận
+                      </h4>
+                      <span className="text-xs text-gray-500">
+                        {postComments?.length ?? 0} bình luận
+                      </span>
                     </div>
 
                     <div className="px-4 py-3">
-                      <form onSubmit={handleAddComment} className="flex items-start gap-3">
+                      <form
+                        onSubmit={handleAddComment}
+                        className="flex items-start gap-3"
+                      >
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 uppercase">
-                          {currentUser?.fullName ? currentUser.fullName.slice(0, 2) : currentUser?.username?.slice(0, 2)}
+                          {currentUser?.fullName
+                            ? currentUser.fullName.slice(0, 2)
+                            : currentUser?.username?.slice(0, 2)}
                         </div>
                         <div className="flex-1 space-y-2">
                           <textarea
@@ -560,44 +674,65 @@ function ChannelDetail() {
                     </div>
 
                     {isCommentsLoading ? (
-                      <div className="px-4 py-4 text-sm text-gray-500">Đang tải bình luận...</div>
+                      <div className="px-4 py-4 text-sm text-gray-500">
+                        Đang tải bình luận...
+                      </div>
                     ) : postComments?.length ? (
                       <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto pr-1">
                         {postComments.map((cmt) => (
                           <div key={cmt.id} className="px-4 py-3">
                             <div className="flex items-start gap-3">
                               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 uppercase">
-                                {cmt.author?.fullName ? cmt.author.fullName.slice(0, 2) : cmt.author?.username?.slice(0, 2) || "??"}
+                                {cmt.author?.fullName
+                                  ? cmt.author.fullName.slice(0, 2)
+                                  : cmt.author?.username?.slice(0, 2) || "??"}
                               </div>
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <p className="text-sm font-semibold text-gray-900">
-                                    {cmt.author?.fullName || cmt.author?.username || "Ẩn danh"}
+                                    {cmt.author?.fullName ||
+                                      cmt.author?.username ||
+                                      "Ẩn danh"}
                                   </p>
-                                  {cmt.createdAt && <span className="text-xs text-gray-500">{new Date(cmt.createdAt).toLocaleString("vi-VN")}</span>}
-                                  {(cmt.author?.id === currentUser?.id || cmt.authorId === currentUser?.id) && (
+                                  {cmt.createdAt && (
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(cmt.createdAt).toLocaleString(
+                                        "vi-VN"
+                                      )}
+                                    </span>
+                                  )}
+                                  {(cmt.author?.id === currentUser?.id ||
+                                    cmt.authorId === currentUser?.id) && (
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteComment(cmt.id)}
+                                      onClick={() =>
+                                        handleDeleteComment(cmt.id)
+                                      }
                                       className="text-xs font-medium text-red-500 hover:text-red-600"
                                     >
                                       Xóa
                                     </button>
                                   )}
                                 </div>
-                                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{cmt.content}</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                                  {cmt.content}
+                                </p>
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="px-4 py-5 text-sm text-gray-500">Chưa có bình luận nào.</div>
+                      <div className="px-4 py-5 text-sm text-gray-500">
+                        Chưa có bình luận nào.
+                      </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="px-6 py-6 text-sm text-red-500">Không tải được chi tiết bài đăng.</div>
+                <div className="px-6 py-6 text-sm text-red-500">
+                  Không tải được chi tiết bài đăng.
+                </div>
               )}
             </div>
           </div>

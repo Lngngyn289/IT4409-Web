@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import useAuth from "../hooks/useAuth";
 import Toast from "./Toast";
 import VideoGrid from "./VideoGrid";
+import VideoTile from "./VideoTile";
 import MeetingControls from "./MeetingControls";
 import MeetingParticipants from "./MeetingParticipants";
 
-function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
+function ChannelMeeting({
+  channelId,
+  isChannelAdmin,
+  onMeetingStateChange,
+  isMinimized = false,
+  onToggleMinimize,
+}) {
   const { authFetch } = useAuth();
   const [meeting, setMeeting] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,6 +31,20 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const leaveNotifiedRef = useRef(false);
+
+  // Minimized PiP drag state
+  const pipSize = useMemo(() => ({ width: 352, height: 280 }), []);
+  const getDefaultPipPosition = () => {
+    if (typeof window === "undefined") return { x: 16, y: 16 };
+    return {
+      x: Math.max(16, window.innerWidth - pipSize.width - 16),
+      y: Math.max(16, window.innerHeight - pipSize.height - 16),
+    };
+  };
+  const [pipPosition, setPipPosition] = useState(() => getDefaultPipPosition());
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
 
   const intervalRef = useRef(null);
 
@@ -34,6 +55,78 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
   const closeToast = useCallback(() => {
     setToast(null);
   }, []);
+
+  const handleMinimizeToggle = useCallback(() => {
+    if (onToggleMinimize) {
+      onToggleMinimize();
+    }
+  }, [onToggleMinimize]);
+
+  const clampPipPosition = useCallback(
+    (x, y) => {
+      if (typeof window === "undefined") return { x, y };
+      const maxX = Math.max(8, window.innerWidth - pipSize.width - 8);
+      const maxY = Math.max(8, window.innerHeight - pipSize.height - 8);
+      return {
+        x: Math.min(Math.max(8, x), maxX),
+        y: Math.min(Math.max(8, y), maxY),
+      };
+    },
+    [pipSize.width, pipSize.height]
+  );
+
+  const handleDragMove = useCallback(
+    (e) => {
+      if (!isDraggingRef.current) return;
+      const nextX = e.clientX - dragOffsetRef.current.x;
+      const nextY = e.clientY - dragOffsetRef.current.y;
+      setPipPosition(clampPipPosition(nextX, nextY));
+    },
+    [clampPipPosition]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    document.removeEventListener("mousemove", handleDragMove);
+    document.removeEventListener("mouseup", handleDragEnd);
+  }, [handleDragMove]);
+
+  const handleDragStart = useCallback(
+    (e) => {
+      if (!isMinimized) return;
+      // Avoid starting drag when clicking buttons
+      if (e.target?.closest?.("button")) return;
+      isDraggingRef.current = true;
+      dragOffsetRef.current = {
+        x: e.clientX - pipPosition.x,
+        y: e.clientY - pipPosition.y,
+      };
+      document.addEventListener("mousemove", handleDragMove);
+      document.addEventListener("mouseup", handleDragEnd);
+      e.preventDefault();
+    },
+    [isMinimized, pipPosition.x, pipPosition.y, handleDragMove, handleDragEnd]
+  );
+
+  // Keep PiP on-screen when viewport changes
+  useEffect(() => {
+    const onResize = () => {
+      setPipPosition((prev) => clampPipPosition(prev.x, prev.y));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampPipPosition]);
+
+  // Cleanup drag listeners if component unmounts mid-drag
+  useEffect(() => {
+    return () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      document.removeEventListener("mousemove", handleDragMove);
+      document.removeEventListener("mouseup", handleDragEnd);
+    };
+  }, [handleDragMove, handleDragEnd]);
 
   const fetchMeetingStatus = useCallback(
     async (showLoadingState = true) => {
@@ -78,11 +171,12 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
     };
   }, [isInMeeting, fetchMeetingStatus]);
 
-  // Cleanup on unmount
+  // Cleanup Daily instance on unmount
   useEffect(() => {
     return () => {
       if (callObjectRef.current) {
         callObjectRef.current.destroy();
+        callObjectRef.current = null;
       }
     };
   }, []);
@@ -111,17 +205,35 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
   };
 
   const handleJoinMeeting = async () => {
+    // Guard: prevent joining multiple times
+    if (isJoining || isInMeeting) {
+      return;
+    }
+
     setIsJoining(true);
+    leaveNotifiedRef.current = false;
     try {
+      // Destroy any existing Daily instance first
+      if (callObjectRef.current) {
+        try {
+          await callObjectRef.current.destroy();
+        } catch (e) {
+          console.warn("Error destroying previous call object:", e);
+        }
+        callObjectRef.current = null;
+      }
+
       // Wait for Daily.co SDK to load
       let attempts = 0;
       while (!window.DailyIframe && attempts < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         attempts++;
       }
 
       if (!window.DailyIframe) {
-        throw new Error("Daily.co SDK failed to load. Please refresh the page.");
+        throw new Error(
+          "Daily.co SDK failed to load. Please refresh the page."
+        );
       }
 
       // Request media permissions before joining
@@ -131,18 +243,21 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
           audio: true,
         });
         // Stop the test stream
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       } catch (mediaError) {
         console.warn("Media permission warning:", mediaError);
-        showToast("Camera/microphone access denied. You can enable them later.", "warning");
+        showToast(
+          "Camera/microphone access denied. You can enable them later.",
+          "warning"
+        );
       }
 
-      await authFetch(`/api/channels/${channelId}/meetings/join`, {
-        method: "POST",
-      });
-
-      const tokenData = await authFetch(
-        `/api/channels/${channelId}/meetings/token`
+      // Join meeting - returns token and roomUrl (both required by Daily SDK)
+      const joinData = await authFetch(
+        `/api/channels/${channelId}/meetings/join`,
+        {
+          method: "POST",
+        }
       );
 
       // Create Daily call object
@@ -153,10 +268,10 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       // Set up event listeners
       setupDailyListeners(callObject);
 
-      // Join the call
+      // Join the call with both token and URL (token is verified by Daily)
       await callObject.join({
-        url: tokenData.roomUrl,
-        token: tokenData.token,
+        url: joinData.roomUrl,
+        token: joinData.token,
       });
 
       // Sync initial state with Daily.co
@@ -193,7 +308,20 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
         console.log("Joined meeting event");
         updateParticipants();
       })
-      .on("left-meeting", handleLeaveMeetingUI)
+      .on("left-meeting", async () => {
+        try {
+          // Ensure backend reflects leave when Daily triggers left-meeting
+          if (!leaveNotifiedRef.current) {
+            leaveNotifiedRef.current = true;
+            await authFetch(`/api/channels/${channelId}/meetings/leave`, {
+              method: "POST",
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to notify backend on left-meeting:", err);
+        }
+        handleLeaveMeetingUI();
+      })
       .on("participant-joined", (event) => {
         console.log("Participant joined:", event);
         updateParticipants();
@@ -204,10 +332,10 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
 
         // Update local mic/camera state if it's the local participant
         if (event.participant.local) {
-          if (typeof event.participant.audio === 'boolean') {
+          if (typeof event.participant.audio === "boolean") {
             setIsMicOn(event.participant.audio);
           }
-          if (typeof event.participant.video === 'boolean') {
+          if (typeof event.participant.video === "boolean") {
             setIsCameraOn(event.participant.video);
           }
         }
@@ -238,6 +366,42 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       });
   };
 
+  // Ensure we mark leave in DB when tab/window is closed
+  useEffect(() => {
+    if (!isInMeeting) return;
+
+    const beforeUnloadHandler = () => {
+      if (leaveNotifiedRef.current) return;
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+        leaveNotifiedRef.current = true;
+        // Use fetch with keepalive to reliably send on unload
+        fetch(`/api/channels/${channelId}/meetings/leave`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          keepalive: true,
+        });
+      } catch {}
+    };
+
+    const pageHideHandler = () => {
+      if (!leaveNotifiedRef.current) {
+        beforeUnloadHandler();
+      }
+    };
+
+    window.addEventListener("beforeunload", beforeUnloadHandler);
+    window.addEventListener("pagehide", pageHideHandler);
+
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnloadHandler);
+      window.removeEventListener("pagehide", pageHideHandler);
+    };
+  }, [isInMeeting, channelId]);
+
   const updateParticipants = () => {
     if (!callObjectRef.current) return;
 
@@ -252,15 +416,16 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
 
     // Check if local participant is screen sharing
     if (localP) {
-      const localIsScreenShare = localP.screen ||
-                                 localP.screenVideoTrack ||
-                                 localP.tracks?.screenVideo?.state === 'playable';
+      const localIsScreenShare =
+        localP.screen ||
+        localP.screenVideoTrack ||
+        localP.tracks?.screenVideo?.state === "playable";
 
-      console.log('Local participant screen check:', {
+      console.log("Local participant screen check:", {
         screen: localP.screen,
         screenVideoTrack: localP.screenVideoTrack,
         screenVideoState: localP.tracks?.screenVideo?.state,
-        isScreenShare: localIsScreenShare
+        isScreenShare: localIsScreenShare,
       });
 
       if (localIsScreenShare) {
@@ -274,15 +439,16 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
 
       // Check if this is a screen share participant
       // Daily.co screen share participants have screen: true or screenVideoTrack
-      const isScreenShare = participant.screen ||
-                           participant.screenVideoTrack ||
-                           participant.tracks?.screenVideo?.state === 'playable';
+      const isScreenShare =
+        participant.screen ||
+        participant.screenVideoTrack ||
+        participant.tracks?.screenVideo?.state === "playable";
 
       console.log(`Participant ${id} screen check:`, {
         screen: participant.screen,
         screenVideoTrack: participant.screenVideoTrack,
         screenVideoState: participant.tracks?.screenVideo?.state,
-        isScreenShare
+        isScreenShare,
       });
 
       if (isScreenShare && !screenShareParticipant) {
@@ -313,7 +479,10 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       showToast(actualState ? "Microphone on" : "Microphone off", "info");
     } catch (err) {
       console.error("Toggle mic error:", err);
-      showToast(err.message || "Failed to toggle microphone. Please check permissions.", "error");
+      showToast(
+        err.message || "Failed to toggle microphone. Please check permissions.",
+        "error"
+      );
       // Revert to actual state
       const localP = callObjectRef.current?.participants().local;
       if (localP) setIsMicOn(localP.audio);
@@ -333,7 +502,10 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       showToast(actualState ? "Camera on" : "Camera off", "info");
     } catch (err) {
       console.error("Toggle camera error:", err);
-      showToast(err.message || "Failed to toggle camera. Please check permissions.", "error");
+      showToast(
+        err.message || "Failed to toggle camera. Please check permissions.",
+        "error"
+      );
       // Revert to actual state
       const localP = callObjectRef.current?.participants().local;
       if (localP) setIsCameraOn(localP.video);
@@ -369,9 +541,12 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       if (callObjectRef.current) {
         await callObjectRef.current.leave();
       }
-      await authFetch(`/api/channels/${channelId}/meetings/leave`, {
-        method: "POST",
-      });
+      if (!leaveNotifiedRef.current) {
+        leaveNotifiedRef.current = true;
+        await authFetch(`/api/channels/${channelId}/meetings/leave`, {
+          method: "POST",
+        });
+      }
       handleLeaveMeetingUI();
       await fetchMeetingStatus();
       showToast("Left meeting successfully", "info");
@@ -385,6 +560,7 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
       callObjectRef.current.destroy();
       callObjectRef.current = null;
     }
+    leaveNotifiedRef.current = false;
     setIsInMeeting(false);
     setParticipants({});
     setLocalParticipant(null);
@@ -399,9 +575,7 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
 
   const handleEndMeeting = async () => {
     if (
-      !window.confirm(
-        "Are you sure you want to end this meeting for everyone?"
-      )
+      !window.confirm("Are you sure you want to end this meeting for everyone?")
     ) {
       return;
     }
@@ -448,6 +622,214 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
     const participantCount =
       Object.keys(participants).length + (localParticipant ? 1 : 0);
 
+    const mainParticipant =
+      screenShare || localParticipant || Object.values(participants)[0];
+    const mainParticipantIsLocal =
+      !!mainParticipant &&
+      !!localParticipant &&
+      mainParticipant.session_id === localParticipant.session_id;
+    const mainParticipantIsScreenShare =
+      !!screenShare && mainParticipant === screenShare;
+
+    if (isMinimized) {
+      return (
+        <>
+          <div
+            className="pointer-events-none fixed z-40 w-[22rem] max-w-[92vw]"
+            style={{ left: pipPosition.x, top: pipPosition.y }}
+          >
+            <div className="pointer-events-auto overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
+              <div
+                className="flex items-center justify-between bg-gray-800 px-3 py-2 cursor-move select-none"
+                onMouseDown={handleDragStart}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-gray-400">
+                      Đang trong cuộc họp
+                    </p>
+                    <p className="truncate text-sm font-semibold text-white">
+                      {meeting?.title || "Channel Meeting"}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {participantCount} người tham gia
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleMinimizeToggle}
+                    className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-semibold text-white hover:bg-gray-600"
+                    title="Phóng to cuộc họp"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 10l4-4 4 4M8 14l4 4 4-4"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleLeaveMeeting}
+                    className="rounded-lg bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700"
+                    title="Rời cuộc họp"
+                  >
+                    Rời
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-48 bg-black">
+                {mainParticipant ? (
+                  <VideoTile
+                    participant={mainParticipant}
+                    isLocal={mainParticipantIsLocal}
+                    isScreenShare={mainParticipantIsScreenShare}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-gray-400">
+                    Đang chờ video...
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between bg-gray-800 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleToggleMic}
+                    className={`rounded-lg p-2 text-xs font-semibold transition-colors ${
+                      isMicOn
+                        ? "bg-gray-700 text-white hover:bg-gray-600"
+                        : "bg-red-600 text-white hover:bg-red-700"
+                    }`}
+                    title={isMicOn ? "Tắt mic" : "Bật mic"}
+                  >
+                    {isMicOn ? (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleToggleCamera}
+                    className={`rounded-lg p-2 text-xs font-semibold transition-colors ${
+                      isCameraOn
+                        ? "bg-gray-700 text-white hover:bg-gray-600"
+                        : "bg-red-600 text-white hover:bg-red-700"
+                    }`}
+                    title={isCameraOn ? "Tắt camera" : "Bật camera"}
+                  >
+                    {isCameraOn ? (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleToggleScreenShare}
+                    className={`rounded-lg p-2 text-xs font-semibold transition-colors ${
+                      isScreenSharing
+                        ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                        : "bg-gray-700 text-white hover:bg-gray-600"
+                    }`}
+                    title={
+                      isScreenSharing ? "Dừng chia sẻ" : "Chia sẻ màn hình"
+                    }
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={closeToast}
+            />
+          )}
+        </>
+      );
+    }
+
     return (
       <>
         <div className="flex flex-col h-full bg-gray-900">
@@ -458,10 +840,30 @@ function ChannelMeeting({ channelId, isChannelAdmin, onMeetingStateChange }) {
                 {meeting?.title || "Channel Meeting"}
               </h3>
               <span className="text-sm text-gray-300">
-                {participantCount} participant{participantCount !== 1 ? "s" : ""}
+                {participantCount} participant
+                {participantCount !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="flex gap-2 items-center">
+              <button
+                onClick={handleMinimizeToggle}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                title="Thu nhỏ cuộc họp"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 18h16M9 10h6M7 6h10"
+                  />
+                </svg>
+              </button>
               {/* Participants toggle */}
               <button
                 onClick={() => setShowParticipants(!showParticipants)}

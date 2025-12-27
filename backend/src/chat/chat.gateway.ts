@@ -23,6 +23,7 @@ interface OnlineUser {
   userId: string;
   username: string;
   fullName: string;
+  avatarUrl?: string | null;
   socketIds: Set<string>;
 }
 
@@ -168,11 +169,19 @@ export class ChatGateway
       this.socketChannels.set(client.id, new Set());
 
       // Cập nhật user presence thành online
-      await this.prisma.userPresence.upsert({
-        where: { userId: user.id },
-        update: { status: 'online', updatedAt: new Date() },
-        create: { userId: user.id, status: 'online' },
-      });
+      try {
+        await this.prisma.userPresence.upsert({
+          where: { userId: user.id },
+          update: { status: 'online', updatedAt: new Date() },
+          create: { userId: user.id, status: 'online' },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to update presence for user ${user.id}:`,
+          err.message,
+        );
+        // Don't throw - presence update is non-critical
+      }
 
       this.logger.log(
         `Client connected: ${client.id} (User: ${user.username})`,
@@ -211,19 +220,27 @@ export class ChatGateway
           this.server.emit('presence:user:offline', { userId: user.id });
 
           // Update presence to offline
-          await this.prisma.userPresence.upsert({
-            where: { userId: user.id },
-            update: {
-              status: 'offline',
-              lastSeen: new Date(),
-              updatedAt: new Date(),
-            },
-            create: {
-              userId: user.id,
-              status: 'offline',
-              lastSeen: new Date(),
-            },
-          });
+          try {
+            await this.prisma.userPresence.upsert({
+              where: { userId: user.id },
+              update: {
+                status: 'offline',
+                lastSeen: new Date(),
+                updatedAt: new Date(),
+              },
+              create: {
+                userId: user.id,
+                status: 'offline',
+                lastSeen: new Date(),
+              },
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to update presence for user ${user.id}:`,
+              err.message,
+            );
+            // Don't throw - presence update is non-critical
+          }
         }
       }
 
@@ -240,6 +257,7 @@ export class ChatGateway
               id: user.id,
               username: user.username,
               fullName: user.fullName,
+              avatarUrl: user.avatarUrl,
             },
           });
         }
@@ -305,6 +323,7 @@ export class ChatGateway
           id: user.id,
           username: user.username,
           fullName: user.fullName,
+          avatarUrl: user.avatarUrl,
         },
       });
 
@@ -347,6 +366,7 @@ export class ChatGateway
         id: user.id,
         username: user.username,
         fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
       },
     });
 
@@ -671,6 +691,7 @@ export class ChatGateway
         userId: user.id,
         username: user.username,
         fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
         socketIds: new Set(),
       });
     }
@@ -704,7 +725,12 @@ export class ChatGateway
 
   private getOnlineUsersInChannel(
     channelId: string,
-  ): Array<{ id: string; username: string; fullName: string }> {
+  ): Array<{
+    id: string;
+    username: string;
+    fullName: string;
+    avatarUrl?: string | null;
+  }> {
     const channelUserMap = this.channelUsers.get(channelId);
     if (!channelUserMap) return [];
 
@@ -712,6 +738,7 @@ export class ChatGateway
       id: user.userId,
       username: user.username,
       fullName: user.fullName,
+      avatarUrl: user.avatarUrl,
     }));
   }
 
