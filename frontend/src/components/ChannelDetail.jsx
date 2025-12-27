@@ -324,7 +324,7 @@ function ChannelDetail() {
                 }}
               >
                 {channel.description}
-              </p>
+              </div>
             )}
           </div>
 
