@@ -13,12 +13,12 @@ function AddWorkspaceMemberModal({ workspaceId, onClose, onSuccess }) {
     setIsSubmitting(true);
 
     try {
-      await authFetch(`/api/workspaces/${workspaceId}/members`, {
+      const newMember = await authFetch(`/api/workspaces/${workspaceId}/members`, {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       addToast("Đã thêm thành viên thành công", "success");
-      onSuccess();
+      onSuccess(newMember);
       onClose();
     } catch (err) {
       addToast(err.message || "Lỗi khi thêm thành viên", "error");
