@@ -114,6 +114,24 @@ function CreateChannelModal({ workspaceId, onClose, onSuccess }) {
               />
             </div>
 
+            <div>
+              <label
+                htmlFor="description"
+                className="mb-2 block text-sm font-medium"
+                color="rgb(30,41,59)"
+              >
+                Mô tả
+              </label>
+              <textarea
+                id="description"
+                value={formState.description}
+                onChange={handleChange("description")}
+                placeholder="Mô tả ngắn về channel..."
+                rows={3}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-800 resize-none"
+              />
+            </div>
+
             {/* Privacy Setting */}
             <div>
               <label

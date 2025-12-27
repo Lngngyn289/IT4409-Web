@@ -516,27 +516,13 @@ export class WorkspaceService {
       throw new ForbiddenException('Bạn không thuộc workspace này');
     }
 
-    // Search channels (only channels user is member of or public channels)
+    // Search channels in workspace (public + private)
     const channels = await this.prisma.channel.findMany({
       where: {
         workspaceId,
-        AND: [
-          {
-            OR: [
-              { name: { contains: query } },
-              { description: { contains: query } },
-            ],
-          },
-          {
-            OR: [
-              { isPrivate: false },
-              {
-                members: {
-                  some: { userId },
-                },
-              },
-            ],
-          },
+        OR: [
+          { name: { contains: query } },
+          { description: { contains: query } },
         ],
       },
       select: {

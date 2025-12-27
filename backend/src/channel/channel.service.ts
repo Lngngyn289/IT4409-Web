@@ -16,6 +16,7 @@ import {
 } from './dtos/channel-response.dto';
 import { ChannelMemberResponseDto } from './dtos/channel-member-response.dto';
 import { ChannelJoinRequestResponseDto } from './dtos/channel-join-request-response.dto';
+import { ChannelPreviewResponseDto } from './dtos/channel-preview-response.dto';
 import { ROLES } from '../common/constants/roles.constant';
 import { JOIN_REQUEST_STATUS } from '../common/constants/join-request-status.constant';
 import { randomBytes } from 'crypto';
@@ -840,26 +841,22 @@ export class ChannelService {
         },
       });
 
-      // Kiểm tra chưa phải member (check trong transaction để tránh race condition)
-      const existingMember = await tx.channelMember.findUnique({
+      // Sử dụng upsert để tránh lỗi unique constraint
+      // Nếu đã là member thì không làm gì, nếu chưa thì tạo mới
+      await tx.channelMember.upsert({
         where: {
           channelId_userId: {
             channelId,
             userId: request.userId,
           },
         },
+        update: {}, // Không cập nhật gì nếu đã tồn tại
+        create: {
+          channelId,
+          userId: request.userId,
+          roleId: memberRole.id,
+        },
       });
-
-      // Thêm user vào channel nếu chưa phải member
-      if (!existingMember) {
-        await tx.channelMember.create({
-          data: {
-            channelId,
-            userId: request.userId,
-            roleId: memberRole.id,
-          },
-        });
-      }
     });
 
     return {
@@ -1081,6 +1078,165 @@ export class ChannelService {
         fullName: updatedMember.user.fullName,
         avatarUrl: updatedMember.user.avatarUrl ?? undefined,
       },
+    };
+  }
+
+  /**
+   * Preview channel - Xem thông tin channel mà không cần là member
+   * Bất kỳ user nào trong workspace đều có thể preview
+   */
+  async previewChannel(
+    userId: string,
+    channelId: string,
+  ): Promise<ChannelPreviewResponseDto> {
+    // 1. Tìm channel
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      include: {
+        members: true,
+      },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel không tồn tại');
+    }
+
+    // 2. Kiểm tra user có thuộc workspace không
+    const workspaceMembership = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: channel.workspaceId,
+          userId,
+        },
+      },
+    });
+
+    if (!workspaceMembership) {
+      throw new ForbiddenException(
+        'Bạn phải là thành viên của workspace để xem channel này',
+      );
+    }
+
+    // 3. Kiểm tra xem user đã là member chưa
+    const isMember = channel.members.some((m) => m.userId === userId);
+
+    // 4. Kiểm tra có thể join không (phải thuộc workspace và chưa là member)
+    const canJoin = !isMember;
+
+    return {
+      id: channel.id,
+      workspaceId: channel.workspaceId,
+      name: channel.name,
+      description: channel.description ?? undefined,
+      isPrivate: channel.isPrivate,
+      memberCount: channel.members.length,
+      isMember,
+      canJoin,
+    };
+  }
+
+  /**
+   * Join channel trực tiếp bằng channelId
+   * Public channel: Join thẳng
+   * Private channel: Tạo join request, chờ duyệt
+   */
+  async joinChannelById(
+    userId: string,
+    channelId: string,
+  ): Promise<{ message: string; channelId?: string; requestId?: string }> {
+    // 1. Tìm channel
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      include: {
+        members: true,
+      },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel không tồn tại');
+    }
+
+    // 2. Kiểm tra user đã là member chưa
+    const existingMembership = await this.prisma.channelMember.findUnique({
+      where: {
+        channelId_userId: {
+          channelId: channel.id,
+          userId,
+        },
+      },
+    });
+
+    if (existingMembership) {
+      throw new BadRequestException('Bạn đã là thành viên của channel này');
+    }
+
+    // 3. Kiểm tra user có thuộc workspace không
+    const workspaceMembership = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: channel.workspaceId,
+          userId,
+        },
+      },
+    });
+
+    if (!workspaceMembership) {
+      throw new BadRequestException(
+        'Bạn phải là thành viên của workspace trước khi tham gia channel',
+      );
+    }
+
+    // 4. Public channel: Join thẳng
+    if (!channel.isPrivate) {
+      const memberRole = await this.prisma.role.findUnique({
+        where: { name: ROLES.CHANNEL_MEMBER },
+      });
+
+      if (!memberRole) {
+        throw new NotFoundException('Role CHANNEL_MEMBER not found');
+      }
+
+      await this.prisma.channelMember.create({
+        data: {
+          channelId: channel.id,
+          userId,
+          roleId: memberRole.id,
+        },
+      });
+
+      return {
+        message: 'Bạn đã tham gia channel thành công',
+        channelId: channel.id,
+      };
+    }
+
+    // 5. Private channel: Tạo join request
+    // Kiểm tra đã có request pending chưa
+    const existingRequest = await this.prisma.channelJoinRequest.findFirst({
+      where: {
+        channelId: channel.id,
+        userId,
+        status: JOIN_REQUEST_STATUS.PENDING,
+      },
+    });
+
+    if (existingRequest) {
+      throw new BadRequestException(
+        'Bạn đã gửi yêu cầu tham gia channel này trước đó',
+      );
+    }
+
+    const joinRequest = await this.prisma.channelJoinRequest.create({
+      data: {
+        channelId: channel.id,
+        userId,
+        status: JOIN_REQUEST_STATUS.PENDING,
+      },
+    });
+
+    return {
+      message: 'Yêu cầu tham gia đã được gửi. Vui lòng chờ admin duyệt.',
+      requestId: joinRequest.id,
     };
   }
 }
