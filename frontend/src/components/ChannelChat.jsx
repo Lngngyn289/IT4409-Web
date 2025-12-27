@@ -381,7 +381,7 @@ function ChannelChat({ channelId, channelName, members = [] }) {
               onClick={() => setIsOnlineListOpen(true)}
               className="ml-2 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition"
             >
-              Xem
+              Xem tất cả
             </button>
           )}
         </div>

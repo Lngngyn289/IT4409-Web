@@ -57,7 +57,7 @@ export class MeetingService {
           name: `channel-${channel.name}-${Date.now()}`,
           privacy: 'private', // CRITICAL: Require token to join - URL alone won't work
           properties: {
-            exp: Math.floor(Date.now() / 1000) + 600, // expire in 10 minutes
+            exp: Math.floor(Date.now() / 1000) + 7200, // expire in 2 hours
             enable_knocking: false, // No knocking, must have valid token
             enable_screenshare: true,
             enable_chat: false, // Use our own chat system
@@ -216,8 +216,8 @@ export class MeetingService {
       if (!meeting.roomName)
         throw new BadRequestException('Meeting has no roomName recorded');
 
-      // Token expires in 10 minutes for security
-      const tokenExpiry = Math.floor(Date.now() / 1000) + 600;
+      // Token expires in 2 hours for typical meeting length
+      const tokenExpiry = Math.floor(Date.now() / 1000) + 7200;
 
       const res = await axios.post<DailyTokenResponse>(
         'https://api.daily.co/v1/meeting-tokens',

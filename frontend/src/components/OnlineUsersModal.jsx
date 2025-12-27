@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 
-const OnlineUsersModal = ({ isOpen, onClose, onlineUsers }) => {
+const OnlineUsersModal = ({ isOpen, onClose, onlineUsers: onlineUsersProp }) => {
   const modalRef = useRef(null);
+  const onlineUsers = Array.isArray(onlineUsersProp) ? onlineUsersProp : [];
 
   // Close modal when clicking outside
   useEffect(() => {
@@ -36,18 +37,21 @@ const OnlineUsersModal = ({ isOpen, onClose, onlineUsers }) => {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black bg-opacity-30" />
+      <div className="fixed inset-0 z-40 bg-black bg-opacity-30 pointer-events-none" />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-auto">
         <div
           ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="online-users-title"
           className="w-full max-w-md rounded-lg bg-white shadow-lg"
         >
           {/* Header */}
           <div className="flex items-center justify-between rounded-t-lg border-b border-slate-800 bg-[rgb(30,41,59)] px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">
+              <h2 id="online-users-title" className="text-lg font-semibold text-white">
                 Người dùng online
               </h2>
               <p className="text-sm text-slate-300">

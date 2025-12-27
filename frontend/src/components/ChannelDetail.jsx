@@ -346,7 +346,10 @@ function ChannelDetail() {
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px px-6">
             <button
-              onClick={() => setActiveTab("posts")}
+              onClick={() => {
+                setActiveTab("posts");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "posts"
                   ? "border-indigo-500 text-indigo-600"
@@ -356,7 +359,10 @@ function ChannelDetail() {
               Bài đăng
             </button>
             <button
-              onClick={() => setActiveTab("chat")}
+              onClick={() => {
+                setActiveTab("chat");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "chat"
                   ? "border-indigo-500 text-indigo-600"
@@ -379,7 +385,10 @@ function ChannelDetail() {
               🎥 Meeting
             </button>
             <button
-              onClick={() => setActiveTab("files")}
+              onClick={() => {
+                setActiveTab("files");
+                if (isInMeeting && !isMeetingMinimized) setIsMeetingMinimized(true);
+              }}
               className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "files"
                   ? "border-indigo-500 text-indigo-600"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import useAuth from "../hooks/useAuth";
 import Toast from "./Toast";
 import VideoGrid from "./VideoGrid";
@@ -31,9 +31,10 @@ function ChannelMeeting({
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const leaveNotifiedRef = useRef(false);
 
   // Minimized PiP drag state
-  const pipSize = { width: 352, height: 280 }; // ~22rem width, ~minimized height
+  const pipSize = useMemo(() => ({ width: 352, height: 280 }), []);
   const getDefaultPipPosition = () => {
     if (typeof window === "undefined") return { x: 16, y: 16 };
     return {
@@ -41,7 +42,7 @@ function ChannelMeeting({
       y: Math.max(16, window.innerHeight - pipSize.height - 16),
     };
   };
-  const [pipPosition, setPipPosition] = useState(getDefaultPipPosition);
+  const [pipPosition, setPipPosition] = useState(() => getDefaultPipPosition());
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
 
@@ -116,6 +117,16 @@ function ChannelMeeting({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [clampPipPosition]);
+
+  // Cleanup drag listeners if component unmounts mid-drag
+  useEffect(() => {
+    return () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      document.removeEventListener("mousemove", handleDragMove);
+      document.removeEventListener("mouseup", handleDragEnd);
+    };
+  }, [handleDragMove, handleDragEnd]);
 
   const fetchMeetingStatus = useCallback(
     async (showLoadingState = true) => {
@@ -195,11 +206,12 @@ function ChannelMeeting({
 
   const handleJoinMeeting = async () => {
     // Guard: prevent joining multiple times
-    if (isJoining || isInMeeting || callObjectRef.current) {
+    if (isJoining || isInMeeting) {
       return;
     }
 
     setIsJoining(true);
+    leaveNotifiedRef.current = false;
     try {
       // Destroy any existing Daily instance first
       if (callObjectRef.current) {
@@ -299,9 +311,12 @@ function ChannelMeeting({
       .on("left-meeting", async () => {
         try {
           // Ensure backend reflects leave when Daily triggers left-meeting
-          await authFetch(`/api/channels/${channelId}/meetings/leave`, {
-            method: "POST",
-          });
+          if (!leaveNotifiedRef.current) {
+            leaveNotifiedRef.current = true;
+            await authFetch(`/api/channels/${channelId}/meetings/leave`, {
+              method: "POST",
+            });
+          }
         } catch (err) {
           console.warn("Failed to notify backend on left-meeting:", err);
         }
@@ -355,10 +370,12 @@ function ChannelMeeting({
   useEffect(() => {
     if (!isInMeeting) return;
 
-    const beforeUnloadHandler = (e) => {
+    const beforeUnloadHandler = () => {
+      if (leaveNotifiedRef.current) return;
       try {
         const token = localStorage.getItem("accessToken");
         if (!token) return;
+        leaveNotifiedRef.current = true;
         // Use fetch with keepalive to reliably send on unload
         fetch(`/api/channels/${channelId}/meetings/leave`, {
           method: "POST",
@@ -370,7 +387,11 @@ function ChannelMeeting({
       } catch {}
     };
 
-    const pageHideHandler = () => beforeUnloadHandler();
+    const pageHideHandler = () => {
+      if (!leaveNotifiedRef.current) {
+        beforeUnloadHandler();
+      }
+    };
 
     window.addEventListener("beforeunload", beforeUnloadHandler);
     window.addEventListener("pagehide", pageHideHandler);
@@ -520,9 +541,12 @@ function ChannelMeeting({
       if (callObjectRef.current) {
         await callObjectRef.current.leave();
       }
-      await authFetch(`/api/channels/${channelId}/meetings/leave`, {
-        method: "POST",
-      });
+      if (!leaveNotifiedRef.current) {
+        leaveNotifiedRef.current = true;
+        await authFetch(`/api/channels/${channelId}/meetings/leave`, {
+          method: "POST",
+        });
+      }
       handleLeaveMeetingUI();
       await fetchMeetingStatus();
       showToast("Left meeting successfully", "info");
@@ -536,6 +560,7 @@ function ChannelMeeting({
       callObjectRef.current.destroy();
       callObjectRef.current = null;
     }
+    leaveNotifiedRef.current = false;
     setIsInMeeting(false);
     setParticipants({});
     setLocalParticipant(null);
