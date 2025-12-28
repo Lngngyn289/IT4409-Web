@@ -20,7 +20,7 @@ import { ROLES } from '../common/constants/roles.constant';
 
 @Injectable()
 export class PostService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Kiểm tra xem user có phải là member của channel không
@@ -557,15 +557,15 @@ export class PostService {
   }
 
   /**
-   * Toggle reaction (thêm nếu chưa có, xóa nếu đã có)
-   * Tối ưu: 1 API call thay vì 2
+   * Toggle reaction (thêm nếu chưa có, xóa nếu đã có, thay thế nếu react emoji khác)
+   * Mỗi user chỉ có thể react 1 emoji - khi react emoji khác sẽ thay thế emoji cũ
    */
   async toggleReaction(
     userId: string,
     channelId: string,
     postId: string,
     emoji: string,
-  ): Promise<{ action: 'added' | 'removed'; reactions: PostReactionDto[] }> {
+  ): Promise<{ action: 'added' | 'removed' | 'replaced'; reactions: PostReactionDto[] }> {
     // 1. Kiểm tra channel và quyền
     const isMember = await this.isChannelMember(userId, channelId);
     if (!isMember) {
@@ -581,27 +581,41 @@ export class PostService {
       throw new NotFoundException('Bài đăng không tồn tại');
     }
 
-    // 3. Kiểm tra xem đã reaction chưa
-    const existingReaction = await this.prisma.reaction.findUnique({
+    // 3. Tìm tất cả reactions của user này cho post
+    const existingReactions = await this.prisma.reaction.findMany({
       where: {
-        reactableId_userId_emoji: {
-          reactableId: post.reactableId,
-          userId,
-          emoji,
-        },
+        reactableId: post.reactableId,
+        userId,
       },
     });
 
-    let action: 'added' | 'removed';
+    // Kiểm tra xem đã react emoji này chưa
+    const sameEmojiReaction = existingReactions.find((r) => r.emoji === emoji);
 
-    if (existingReaction) {
-      // Xóa reaction
+    let action: 'added' | 'removed' | 'replaced';
+
+    if (sameEmojiReaction) {
+      // User đã react emoji này -> xóa nó (un-react)
       await this.prisma.reaction.delete({
-        where: { id: existingReaction.id },
+        where: { id: sameEmojiReaction.id },
       });
       action = 'removed';
     } else {
-      // Thêm reaction
+      // User chưa react emoji này
+      // Xóa tất cả reactions cũ của user (nếu có)
+      if (existingReactions.length > 0) {
+        await this.prisma.reaction.deleteMany({
+          where: {
+            reactableId: post.reactableId,
+            userId,
+          },
+        });
+        action = 'replaced';
+      } else {
+        action = 'added';
+      }
+
+      // Thêm reaction mới
       await this.prisma.reaction.create({
         data: {
           reactableId: post.reactableId,
@@ -609,7 +623,6 @@ export class PostService {
           emoji,
         },
       });
-      action = 'added';
     }
 
     // 4. Lấy lại danh sách reactions

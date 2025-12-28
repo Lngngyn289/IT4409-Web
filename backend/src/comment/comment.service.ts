@@ -507,7 +507,8 @@ export class CommentService {
   }
 
   /**
-   * Toggle reaction vào comment (thêm nếu chưa có, xóa nếu đã có)
+   * Toggle reaction vào comment (thêm nếu chưa có, xóa nếu đã có, thay thế nếu react emoji khác)
+   * Mỗi user chỉ có thể react 1 emoji - khi react emoji khác sẽ thay thế emoji cũ
    */
   async toggleReaction(
     userId: string,
@@ -531,26 +532,40 @@ export class CommentService {
       throw new NotFoundException('Bình luận không tồn tại');
     }
 
-    // 3. Kiểm tra xem đã reaction chưa
-    const existingReaction = await this.prisma.reaction.findUnique({
+    // 3. Tìm tất cả reactions của user này cho comment
+    const existingReactions = await this.prisma.reaction.findMany({
       where: {
-        reactableId_userId_emoji: {
-          reactableId: comment.reactableId,
-          userId,
-          emoji,
-        },
+        reactableId: comment.reactableId,
+        userId,
       },
     });
 
+    // Kiểm tra xem đã react emoji này chưa
+    const sameEmojiReaction = existingReactions.find((r) => r.emoji === emoji);
+
     let message: string;
-    if (existingReaction) {
-      // Xóa reaction nếu đã có
+    if (sameEmojiReaction) {
+      // User đã react emoji này -> xóa nó (un-react)
       await this.prisma.reaction.delete({
-        where: { id: existingReaction.id },
+        where: { id: sameEmojiReaction.id },
       });
       message = 'Đã xóa reaction';
     } else {
-      // Thêm reaction nếu chưa có
+      // User chưa react emoji này
+      // Xóa tất cả reactions cũ của user (nếu có)
+      if (existingReactions.length > 0) {
+        await this.prisma.reaction.deleteMany({
+          where: {
+            reactableId: comment.reactableId,
+            userId,
+          },
+        });
+        message = 'Đã thay thế reaction';
+      } else {
+        message = 'Đã thêm reaction';
+      }
+
+      // Thêm reaction mới
       await this.prisma.reaction.create({
         data: {
           reactableId: comment.reactableId,
@@ -558,7 +573,6 @@ export class CommentService {
           emoji,
         },
       });
-      message = 'Đã thêm reaction';
     }
 
     // 4. Lấy danh sách reactions mới
