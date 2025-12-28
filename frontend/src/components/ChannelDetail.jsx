@@ -4,10 +4,11 @@ import {
   leaveChannel,
   createPost,
   getPosts,
-  getPostDetail,
-  getPostComments,
-  addPostComment,
-  deletePostComment,
+  updatePost,
+  deletePost,
+  togglePostReaction,
+  uploadPostFiles,
+  removePostAttachment,
 } from "../api";
 import useAuth from "../hooks/useAuth";
 import { useToast } from "../contexts/ToastContext";
@@ -21,7 +22,10 @@ import ChannelFiles from "./ChannelFiles";
 import ChannelMeeting from "./ChannelMeeting";
 import ChannelChat from "./ChannelChat";
 import UserProfilePage from "./UserProfilePage";
-import { Copy, FileText, Folder, MessageSquare, Search, Video } from "lucide-react";
+import PostCard from "./PostCard";
+import PostDetailModal from "./PostDetailModal";
+import EditPostModal from "./EditPostModal";
+import { Copy, FileText, Folder, MessageSquare, Search, Video, PenLine, Image, X, Loader2 } from "lucide-react";
 
 function ChannelDetail() {
   const { channelId } = useParams();
@@ -39,16 +43,17 @@ function ChannelDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPostsLoading, setIsPostsLoading] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const [isPostDetailOpen, setIsPostDetailOpen] = useState(false);
-  const [isPostDetailLoading, setIsPostDetailLoading] = useState(false);
-  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
-  const [isCommenting, setIsCommenting] = useState(false);
+  const [isReacting, setIsReacting] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
   const [postContent, setPostContent] = useState("");
-  const [commentContent, setCommentContent] = useState("");
+  const [postFiles, setPostFiles] = useState([]);
   const [selectedPostId, setSelectedPostId] = useState(null);
-  const [postDetail, setPostDetail] = useState(null);
-  const [postComments, setPostComments] = useState([]);
+  const [isPostDetailOpen, setIsPostDetailOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
+  const [isEditingPost, setIsEditingPost] = useState(false);
+
+  const fileInputRef = useRef(null);
 
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
@@ -93,41 +98,13 @@ function ChannelDetail() {
     }
   }, [channelId, authFetch, addToast]);
 
-  const fetchPostDetail = useCallback(
-    async (postId) => {
-      setIsPostDetailLoading(true);
-      try {
-        const detail = await getPostDetail(channelId, postId, authFetch);
-        setPostDetail(detail);
-        setIsPostDetailOpen(true);
-      } catch (err) {
-        addToast(err.message || "Không tải được chi tiết bài đăng", "error");
-      } finally {
-        setIsPostDetailLoading(false);
-      }
-    },
-    [channelId, authFetch, addToast]
-  );
-
-  const fetchComments = useCallback(
-    async (postId) => {
-      setIsCommentsLoading(true);
-      try {
-        const data = await getPostComments(channelId, postId, authFetch);
-        setPostComments(Array.isArray(data) ? data : []);
-      } catch (err) {
-        addToast(err.message || "Không tải được bình luận", "error");
-      } finally {
-        setIsCommentsLoading(false);
-      }
-    },
-    [channelId, authFetch, addToast]
-  );
+  // Reactions are now included in post response, no need for separate fetch
 
   useEffect(() => {
     fetchChannelData();
     fetchPosts();
   }, [fetchChannelData, fetchPosts]);
+
 
   const handleUpdateSuccess = (updatedChannel) => {
     setChannel(updatedChannel);
@@ -158,15 +135,35 @@ function ChannelDetail() {
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!postContent.trim()) {
-      addToast("Nội dung không được để trống", "error");
+    if (!postContent.trim() && postFiles.length === 0) {
+      addToast("Nội dung hoặc file không được để trống", "error");
       return;
     }
     setIsPosting(true);
     try {
-      await createPost(channelId, { content: postContent.trim() }, authFetch);
+      // 1. Tạo bài đăng trước
+      const newPost = await createPost(
+        channelId,
+        { content: postContent.trim() || " " },
+        authFetch
+      );
+
+      // 2. Upload files nếu có
+      if (postFiles.length > 0) {
+        setIsUploadingFiles(true);
+        try {
+          await uploadPostFiles(channelId, newPost.id, postFiles, authFetch);
+        } catch (uploadErr) {
+          console.error("Failed to upload files:", uploadErr);
+          addToast("Đã tạo bài đăng nhưng upload file thất bại", "warning");
+        } finally {
+          setIsUploadingFiles(false);
+        }
+      }
+
       addToast("Đã tạo bài đăng", "success");
       setPostContent("");
+      setPostFiles([]);
       fetchPosts();
     } catch (err) {
       addToast(err.message || "Không tạo được bài đăng", "error");
@@ -177,41 +174,68 @@ function ChannelDetail() {
 
   const openPostDetail = (postId) => {
     setSelectedPostId(postId);
-    fetchPostDetail(postId);
-    fetchComments(postId);
+    setIsPostDetailOpen(true);
   };
 
-  const handleAddComment = async (e) => {
-    e.preventDefault();
-    if (!commentContent.trim() || !selectedPostId) return;
-    setIsCommenting(true);
+  const handleEditPost = (post) => {
+    setEditingPost(post);
+  };
+
+  const handleSaveEditPost = async (data) => {
+    if (!editingPost) return;
+    setIsEditingPost(true);
     try {
-      await addPostComment(
-        channelId,
-        selectedPostId,
-        commentContent.trim(),
-        authFetch
-      );
-      setCommentContent("");
-      fetchComments(selectedPostId);
-      fetchPostDetail(selectedPostId);
+      await updatePost(channelId, editingPost.id, data, authFetch);
+      addToast("Đã cập nhật bài đăng", "success");
+      setEditingPost(null);
+      fetchPosts();
     } catch (err) {
-      addToast(err.message || "Không gửi được bình luận", "error");
+      addToast(err.message || "Không cập nhật được bài đăng", "error");
     } finally {
-      setIsCommenting(false);
+      setIsEditingPost(false);
     }
   };
 
-  const handleDeleteComment = async (commentId) => {
-    if (!selectedPostId) return;
-    if (!window.confirm("Bạn có chắc muốn xóa bình luận này?")) return;
+  const handleDeletePost = async (postId) => {
+    if (!window.confirm("Bạn có chắc muốn xóa bài đăng này?")) return;
     try {
-      await deletePostComment(channelId, selectedPostId, commentId, authFetch);
-      fetchComments(selectedPostId);
-      fetchPostDetail(selectedPostId);
+      await deletePost(channelId, postId, authFetch);
+      addToast("Đã xóa bài đăng", "success");
+      fetchPosts();
     } catch (err) {
-      addToast(err.message || "Không xóa được bình luận", "error");
+      addToast(err.message || "Không xóa được bài đăng", "error");
     }
+  };
+
+  // Toggle reaction - sử dụng API toggle mới
+  const handleToggleReaction = async (postId, emoji) => {
+    setIsReacting(true);
+    try {
+      const result = await togglePostReaction(channelId, postId, emoji, authFetch);
+      // Cập nhật reactions trong state
+      setPosts((prevPosts) =>
+        prevPosts.map((p) =>
+          p.id === postId ? { ...p, reactions: result.reactions } : p
+        )
+      );
+    } catch (err) {
+      addToast(err.message || "Không thể thực hiện reaction", "error");
+    } finally {
+      setIsReacting(false);
+    }
+  };
+
+  // Handle file selection for new post
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    setPostFiles((prev) => [...prev, ...files]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveFile = (index) => {
+    setPostFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (isLoading) {
@@ -535,108 +559,155 @@ function ChannelDetail() {
                 : "none",
           }}
         >
-          <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
-            <form
-              onSubmit={handleCreatePost}
-              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 uppercase">
-                  {currentUser?.fullName
-                    ? currentUser.fullName.slice(0, 2)
-                    : currentUser?.username?.slice(0, 2)}
-                </div>
-                <div className="flex-1 space-y-3">
+          <div className="mx-auto flex max-w-3xl flex-col gap-5 p-6">
+            {/* Create Post Card */}
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="flex items-start gap-4">
+                {currentUser?.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.fullName || currentUser.username}
+                    className="h-11 w-11 rounded-full object-cover ring-2 ring-gray-50"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-sm font-bold text-white uppercase shadow-inner">
+                    {currentUser?.fullName
+                      ? currentUser.fullName.slice(0, 2)
+                      : currentUser?.username?.slice(0, 2)}
+                  </div>
+                )}
+                <form onSubmit={handleCreatePost} className="flex-1 space-y-3">
                   <textarea
                     value={postContent}
                     onChange={(e) => setPostContent(e.target.value)}
                     placeholder={`Chia sẻ với #${channel.name}...`}
-                    className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
                     rows={3}
                   />
+
+                  {/* File previews */}
+                  {postFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {postFiles.map((file, index) => {
+                        const isImage = file.type.startsWith("image/");
+                        return (
+                          <div
+                            key={index}
+                            className="relative group rounded-lg bg-gray-100 p-2 flex items-center gap-2"
+                          >
+                            {isImage ? (
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt={file.name}
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            ) : (
+                              <FileText className="h-8 w-8 text-gray-500" />
+                            )}
+                            <span className="text-xs text-gray-600 max-w-[100px] truncate">
+                              {file.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile(index)}
+                              className="absolute -top-1 -right-1 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500">
-                      Bài đăng sẽ hiển thị cho tất cả thành viên trong channel.
-                    </p>
+                    <div className="flex items-center gap-3">
+                      {/* File upload button */}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 transition-colors"
+                      >
+                        <Image className="h-4 w-4" />
+                        <span>Ảnh/File</span>
+                      </button>
+                      <span className="text-xs text-gray-400">
+                        Bài đăng sẽ hiển thị cho tất cả thành viên
+                      </span>
+                    </div>
                     <button
                       type="submit"
-                      disabled={isPosting}
-                      className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
+                      disabled={isPosting || isUploadingFiles || (!postContent.trim() && postFiles.length === 0)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isPosting ? "Đang gửi..." : "Đăng bài"}
+                      {(isPosting || isUploadingFiles) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {isUploadingFiles ? "Đang tải file..." : "Đang đăng..."}
+                        </>
+                      ) : (
+                        <>
+                          <PenLine className="h-4 w-4" />
+                          Đăng bài
+                        </>
+                      )}
                     </button>
                   </div>
-                </div>
+                </form>
               </div>
-            </form>
+            </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white">
-              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  Danh sách bài đăng
+            {/* Posts Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-indigo-600" />
+                <h3 className="text-base font-semibold text-gray-900">
+                  Bài đăng ({posts.length})
                 </h3>
-                {isPostsLoading && (
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
-                    Đang tải...
-                  </div>
-                )}
               </div>
-
-              {posts.length === 0 && !isPostsLoading && (
-                <div className="px-4 py-6 text-center text-sm text-gray-500">
-                  Chưa có bài đăng nào trong channel này.
-                </div>
-              )}
-
-              {posts.length > 0 && (
-                <div className="space-y-4 p-4">
-                  {posts.map((post) => (
-                    <button
-                      key={post.id}
-                      onClick={() => openPostDetail(post.id)}
-                      className="group w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-slate-100 text-sm font-semibold text-indigo-700 uppercase">
-                          {post.author?.fullName
-                            ? post.author.fullName.slice(0, 2)
-                            : post.author?.username?.slice(0, 2) || "??"}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2 text-sm">
-                            <span className="font-semibold text-gray-900">
-                              {post.author?.fullName ||
-                                post.author?.username ||
-                                "Ẩn danh"}
-                            </span>
-                            {post.createdAt && (
-                              <span className="text-xs text-gray-500">
-                                {new Date(post.createdAt).toLocaleString(
-                                  "vi-VN"
-                                )}
-                              </span>
-                            )}
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
-                              Bài đăng
-                            </span>
-                          </div>
-                          <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-                            {post.content}
-                          </p>
-                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                            <span className="inline-flex items-center gap-1">
-                              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400"></span>
-                              Nhấp để xem chi tiết
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+              {isPostsLoading && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
+                  Đang tải...
                 </div>
               )}
             </div>
+
+            {/* Posts List */}
+            {posts.length === 0 && !isPostsLoading ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
+                <FileText className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="mt-3 text-sm text-gray-500">
+                  Chưa có bài đăng nào trong channel này.
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Hãy là người đầu tiên chia sẻ!
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    currentUser={currentUser}
+                    onViewDetail={openPostDetail}
+                    onEdit={handleEditPost}
+                    onDelete={handleDeletePost}
+                    onToggleReaction={handleToggleReaction}
+                    isReacting={isReacting}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -699,174 +770,44 @@ function ChannelDetail() {
         </div>
       </div>
 
-      {/* Post detail modal */}
-      {isPostDetailOpen && (
-        <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 px-4 py-10 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl max-h-[85vh] overflow-hidden">
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-              <h3 className="text-base font-semibold text-gray-900">
-                Chi tiết bài đăng
-              </h3>
-              <button
-                onClick={() => setIsPostDetailOpen(false)}
-                className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-              >
-                <svg
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
+      {/* Post Detail Modal */}
+      {isPostDetailOpen && selectedPostId && (
+        <PostDetailModal
+          channelId={channelId}
+          postId={selectedPostId}
+          currentUser={currentUser}
+          authFetch={authFetch}
+          onClose={() => {
+            setIsPostDetailOpen(false);
+            setSelectedPostId(null);
+          }}
+          onPostUpdated={() => {
+            fetchPosts();
+          }}
+          onPostDeleted={() => {
+            setIsPostDetailOpen(false);
+            setSelectedPostId(null);
+            fetchPosts();
+          }}
+        />
+      )}
 
-            <div className="max-h-[75vh] overflow-y-auto">
-              {isPostDetailLoading ? (
-                <div className="px-6 py-10 text-center text-sm text-gray-500">
-                  <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
-                  <p className="mt-3">Đang tải chi tiết bài đăng...</p>
-                </div>
-              ) : postDetail ? (
-                <div className="space-y-6 px-6 py-5">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 uppercase">
-                      {postDetail.author?.fullName
-                        ? postDetail.author.fullName.slice(0, 2)
-                        : postDetail.author?.username?.slice(0, 2) || "??"}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900">
-                          {postDetail.author?.fullName ||
-                            postDetail.author?.username ||
-                            "Ẩn danh"}
-                        </p>
-                        {postDetail.createdAt && (
-                          <span className="text-xs text-gray-500">
-                            {new Date(postDetail.createdAt).toLocaleString(
-                              "vi-VN"
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">
-                        {postDetail.content}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-100 bg-gray-50">
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                      <h4 className="text-sm font-semibold text-gray-900">
-                        Bình luận
-                      </h4>
-                      <span className="text-xs text-gray-500">
-                        {postComments?.length ?? 0} bình luận
-                      </span>
-                    </div>
-
-                    <div className="px-4 py-3">
-                      <form
-                        onSubmit={handleAddComment}
-                        className="flex items-start gap-3"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 uppercase">
-                          {currentUser?.fullName
-                            ? currentUser.fullName.slice(0, 2)
-                            : currentUser?.username?.slice(0, 2)}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <textarea
-                            value={commentContent}
-                            onChange={(e) => setCommentContent(e.target.value)}
-                            placeholder="Viết bình luận..."
-                            className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-800 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            rows={2}
-                          />
-                          <div className="flex justify-end">
-                            <button
-                              type="submit"
-                              disabled={isCommenting}
-                              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                            >
-                              {isCommenting ? "Đang gửi..." : "Gửi bình luận"}
-                            </button>
-                          </div>
-                        </div>
-                      </form>
-                    </div>
-
-                    {isCommentsLoading ? (
-                      <div className="px-4 py-4 text-sm text-gray-500">
-                        Đang tải bình luận...
-                      </div>
-                    ) : postComments?.length ? (
-                      <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto pr-1">
-                        {postComments.map((cmt) => (
-                          <div key={cmt.id} className="px-4 py-3">
-                            <div className="flex items-start gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 uppercase">
-                                {cmt.author?.fullName
-                                  ? cmt.author.fullName.slice(0, 2)
-                                  : cmt.author?.username?.slice(0, 2) || "??"}
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-semibold text-gray-900">
-                                    {cmt.author?.fullName ||
-                                      cmt.author?.username ||
-                                      "Ẩn danh"}
-                                  </p>
-                                  {cmt.createdAt && (
-                                    <span className="text-xs text-gray-500">
-                                      {new Date(cmt.createdAt).toLocaleString(
-                                        "vi-VN"
-                                      )}
-                                    </span>
-                                  )}
-                                  {(cmt.author?.id === currentUser?.id ||
-                                    cmt.authorId === currentUser?.id) && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleDeleteComment(cmt.id)
-                                      }
-                                      className="text-xs font-medium text-red-500 hover:text-red-600"
-                                    >
-                                      Xóa
-                                    </button>
-                                  )}
-                                </div>
-                                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
-                                  {cmt.content}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="px-4 py-5 text-sm text-gray-500">
-                        Chưa có bình luận nào.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="px-6 py-6 text-sm text-red-500">
-                  Không tải được chi tiết bài đăng.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Edit Post Modal */}
+      {editingPost && (
+        <EditPostModal
+          post={editingPost}
+          channelId={channelId}
+          authFetch={authFetch}
+          onClose={() => setEditingPost(null)}
+          onSave={handleSaveEditPost}
+          isLoading={isEditingPost}
+          onUploadFiles={async (files) => {
+            await uploadPostFiles(channelId, editingPost.id, files, authFetch);
+          }}
+          onRemoveAttachment={async (attachmentId) => {
+            await removePostAttachment(channelId, editingPost.id, attachmentId, authFetch);
+          }}
+        />
       )}
 
       {isUpdateModalOpen && (

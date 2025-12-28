@@ -1,0 +1,301 @@
+import { useState } from "react";
+import {
+  MessageCircle,
+  MoreHorizontal,
+  Edit2,
+  Trash2,
+  Smile,
+  Image,
+  FileText,
+  Download,
+  X,
+} from "lucide-react";
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "👏"];
+
+function PostCard({
+  post,
+  currentUser,
+  onViewDetail,
+  onEdit,
+  onDelete,
+  onToggleReaction,
+  isReacting = false,
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+
+  const isAuthor = post.author?.id === currentUser?.id;
+  const createdDate = post.createdAt
+    ? new Date(post.createdAt).toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  const reactions = post.reactions || [];
+  const attachments = post.attachments || [];
+
+  // Check if file is an image
+  const isImage = (mimeType) => mimeType?.startsWith("image/");
+
+  const handleReactionClick = (emoji) => {
+    onToggleReaction?.(post.id, emoji);
+    setShowReactionPicker(false);
+  };
+
+  return (
+    <article className="group relative rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200">
+      {/* Header */}
+      <div className="flex items-start gap-3 px-5 pt-5">
+        {/* Avatar */}
+        {post.author?.avatarUrl ? (
+          <img
+            src={post.author.avatarUrl}
+            alt={post.author.fullName || post.author.username}
+            className="h-11 w-11 rounded-full object-cover ring-2 ring-gray-50"
+          />
+        ) : (
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-sm font-bold text-white uppercase shadow-inner">
+            {post.author?.fullName
+              ? post.author.fullName.slice(0, 2)
+              : post.author?.username?.slice(0, 2) || "??"}
+          </div>
+        )}
+
+        {/* Author info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-gray-900 truncate">
+              {post.author?.fullName || post.author?.username || "Ẩn danh"}
+            </h4>
+            {isAuthor && (
+              <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
+                Bạn
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500">{createdDate}</p>
+        </div>
+
+        {/* Menu */}
+        {isAuthor && (
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="rounded-full p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 transition-all"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+
+            {showMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowMenu(false)}
+                />
+                <div className="absolute right-0 top-full z-20 mt-1 w-36 rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-gray-100">
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onEdit?.(post);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    Chỉnh sửa
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onDelete?.(post.id);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Xóa bài
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="px-5 py-4">
+        <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap line-clamp-6">
+          {post.content}
+        </p>
+        {post.content?.length > 300 && (
+          <button
+            onClick={() => onViewDetail?.(post.id)}
+            className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+          >
+            Xem thêm...
+          </button>
+        )}
+      </div>
+
+      {/* Attachments */}
+      {attachments.length > 0 && (
+        <div className="px-5 pb-3">
+          {/* Images grid */}
+          {attachments.filter((a) => isImage(a.mimeType)).length > 0 && (
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              {attachments
+                .filter((a) => isImage(a.mimeType))
+                .slice(0, 4)
+                .map((att, idx) => (
+                  <div
+                    key={att.id}
+                    className="relative aspect-video rounded-lg overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(att.fileUrl, "_blank")}
+                  >
+                    <img
+                      src={att.fileUrl}
+                      alt={att.fileName}
+                      className="w-full h-full object-cover"
+                    />
+                    {idx === 3 &&
+                      attachments.filter((a) => isImage(a.mimeType)).length >
+                        4 && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <span className="text-white text-lg font-semibold">
+                            +
+                            {attachments.filter((a) => isImage(a.mimeType))
+                              .length - 4}
+                          </span>
+                        </div>
+                      )}
+                  </div>
+                ))}
+            </div>
+          )}
+
+          {/* Non-image files */}
+          {attachments.filter((a) => !isImage(a.mimeType)).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments
+                .filter((a) => !isImage(a.mimeType))
+                .map((att) => (
+                  <a
+                    key={att.id}
+                    href={att.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    <FileText className="h-4 w-4 text-gray-500" />
+                    <span className="max-w-[150px] truncate">
+                      {att.fileName}
+                    </span>
+                    <Download className="h-3.5 w-3.5 text-gray-400" />
+                  </a>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reactions display */}
+      {reactions.length > 0 && (
+        <div className="flex items-center gap-1.5 px-5 pb-3">
+          {reactions.map((reaction) => (
+            <button
+              key={reaction.emoji}
+              onClick={() => handleReactionClick(reaction.emoji)}
+              disabled={isReacting}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs transition-all ${
+                reaction.hasReacted
+                  ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+              title={reaction.users
+                ?.map((u) => u.fullName || u.username)
+                .join(", ")}
+            >
+              <span>{reaction.emoji}</span>
+              <span className="font-medium">{reaction.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 border-t border-gray-50 px-3 py-2">
+        {/* Reaction button */}
+        <div className="relative">
+          <button
+            onClick={() => setShowReactionPicker(!showReactionPicker)}
+            disabled={isReacting}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors disabled:opacity-50"
+          >
+            <Smile className="h-4 w-4" />
+            <span className="hidden sm:inline">Thích</span>
+          </button>
+
+          {showReactionPicker && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setShowReactionPicker(false)}
+              />
+              <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full bg-white p-1.5 shadow-lg ring-1 ring-gray-100">
+                {REACTION_EMOJIS.map((emoji) => {
+                  const hasReacted = reactions.find(
+                    (r) => r.emoji === emoji
+                  )?.hasReacted;
+                  return (
+                    <button
+                      key={emoji}
+                      onClick={() => handleReactionClick(emoji)}
+                      className={`rounded-full p-1.5 text-lg hover:scale-125 transition-transform ${
+                        hasReacted ? "bg-indigo-100" : "hover:bg-gray-100"
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Comment button */}
+        <button
+          onClick={() => onViewDetail?.(post.id)}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+        >
+          <MessageCircle className="h-4 w-4" />
+          <span>
+            {post.commentCount || 0}{" "}
+            <span className="hidden sm:inline">bình luận</span>
+          </span>
+        </button>
+
+        {/* Attachments count */}
+        {attachments.length > 0 && (
+          <div className="flex items-center gap-1 text-sm text-gray-500 px-2">
+            <Image className="h-4 w-4" />
+            <span>{attachments.length}</span>
+          </div>
+        )}
+
+        {/* View detail */}
+        <button
+          onClick={() => onViewDetail?.(post.id)}
+          className="ml-auto rounded-lg px-3 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+        >
+          Xem chi tiết
+        </button>
+      </div>
+    </article>
+  );
+}
+
+export default PostCard;

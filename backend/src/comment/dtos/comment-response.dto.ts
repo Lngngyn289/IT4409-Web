@@ -17,6 +17,23 @@ export class CommentAuthorDto {
   avatarUrl?: string;
 }
 
+export class CommentAttachmentDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  fileUrl: string;
+
+  @ApiProperty()
+  fileName: string;
+
+  @ApiProperty()
+  mimeType: string;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
 export class CommentResponseDto {
   @ApiProperty()
   id: string;
@@ -35,4 +52,10 @@ export class CommentResponseDto {
 
   @ApiProperty()
   author: CommentAuthorDto;
+
+  @ApiProperty({ type: [CommentAttachmentDto], required: false })
+  attachments?: CommentAttachmentDto[];
+
+  @ApiProperty({ required: false })
+  reactions?: any[];
 }

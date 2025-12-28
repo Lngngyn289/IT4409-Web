@@ -18,6 +18,8 @@ import { UploadService } from './upload.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { MaterialService } from '../material/material.service';
 import { ChatService } from '../chat/chat.service';
+import { PostService } from '../post/post.service';
+import { CommentService } from '../comment/comment.service';
 import type { File as MulterFile } from 'multer';
 import type { Response } from 'express';
 
@@ -28,7 +30,11 @@ export class UploadController {
     @Inject(forwardRef(() => MaterialService))
     private readonly materialService: MaterialService,
     private readonly chatService: ChatService,
-  ) {}
+    @Inject(forwardRef(() => PostService))
+    private readonly postService: PostService,
+    @Inject(forwardRef(() => CommentService))
+    private readonly commentService: CommentService,
+  ) { }
 
   /**
    * Force download an attachment via backend (avoids S3/browser inline rendering quirks).
@@ -193,8 +199,98 @@ export class UploadController {
 
     // Attach files to the message (FileAttachment)
     const fileUrls = uploadResults.map((res) => res.url);
-    const updatedMessage = await this.chatService.addAttachments(messageId, fileUrls);
+    const updatedMessage = await this.chatService.addAttachments(
+      messageId,
+      fileUrls,
+    );
 
     return { uploadResults, message: updatedMessage };
+  }
+
+  /** ---------------------------
+   *  Upload file cho bài đăng (Post)
+   * --------------------------- */
+  @UseGuards(JwtAuthGuard)
+  @Post('channel/:channelId/posts/:postId/files')
+  @UseInterceptors(FilesInterceptor('files', 10))
+  async uploadPostFiles(
+    @UploadedFiles() files: MulterFile[],
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Req() req: any,
+  ) {
+    if (!files || files.length === 0)
+      throw new BadRequestException('At least 1 file required');
+
+    // Upload to S3
+    const uploadResults = await this.uploadService.uploadMulti(
+      files,
+      `channel/${channelId}/posts/${postId}`,
+    );
+
+    // Attach files to the post
+    const fileUrls = uploadResults.map((res) => res.url);
+    const updatedPost = await this.postService.addAttachments(postId, fileUrls);
+
+    // Register files to Material for channel visibility
+    const registerPromises = uploadResults.map((res, idx) =>
+      this.materialService.registerChatFile(
+        channelId,
+        res.url,
+        files[idx].originalname,
+        req.user.id,
+        res.key,
+        files[idx].mimetype,
+        files[idx].size,
+      ),
+    );
+
+    await Promise.all(registerPromises);
+
+    return { uploadResults, post: updatedPost };
+  }
+
+  /** ---------------------------
+   *  Upload file cho bình luận (Comment)
+   * --------------------------- */
+  @UseGuards(JwtAuthGuard)
+  @Post('channel/:channelId/posts/:postId/comments/:commentId/files')
+  @UseInterceptors(FilesInterceptor('files', 10))
+  async uploadCommentFiles(
+    @UploadedFiles() files: MulterFile[],
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+    @Req() req: any,
+  ) {
+    if (!files || files.length === 0)
+      throw new BadRequestException('At least 1 file required');
+
+    // Upload to S3 - use same folder structure as posts for consistent bucket policy
+    const uploadResults = await this.uploadService.uploadMulti(
+      files,
+      `channel/${channelId}/posts/${postId}`,
+    );
+
+    // Attach files to the comment
+    const fileUrls = uploadResults.map((res) => res.url);
+    const updatedComment = await this.commentService.addAttachments(commentId, fileUrls);
+
+    // Register files to Material for channel visibility
+    const registerPromises = uploadResults.map((res, idx) =>
+      this.materialService.registerChatFile(
+        channelId,
+        res.url,
+        files[idx].originalname,
+        req.user.id,
+        res.key,
+        files[idx].mimetype,
+        files[idx].size,
+      ),
+    );
+
+    await Promise.all(registerPromises);
+
+    return { uploadResults, comment: updatedComment };
   }
 }

@@ -6,11 +6,33 @@ import { createReadStream } from 'fs';
 
 @Injectable()
 export class UploadService {
+  /** Sanitize filename - remove special characters that can cause issues with S3 */
+  private sanitizeFilename(filename: string): string {
+    // Decode if URL encoded
+    let decoded = filename;
+    try {
+      decoded = decodeURIComponent(filename);
+    } catch {
+      // Keep original if decode fails
+    }
+
+    // Keep only safe characters: alphanumeric, dash, underscore, dot
+    // Replace spaces and other chars with underscore
+    const sanitized = decoded
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/_+/g, '_') // Collapse multiple underscores
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+
+    // Ensure we have a valid filename
+    return sanitized || `file_${Date.now()}`;
+  }
+
   /** Upload 1 file */
   async uploadSingle(file: MulterFile, folder: string) {
     if (!file) throw new BadRequestException('File is required');
 
-    const key = `${folder}/${Date.now()}-${file.originalname}`;
+    const sanitizedName = this.sanitizeFilename(file.originalname);
+    const key = `${folder}/${Date.now()}-${sanitizedName}`;
 
     // Multer may store file in memory (buffer) or on disk (path). Prefer buffer, fallback to stream.
     const body =

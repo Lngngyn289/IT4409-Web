@@ -204,6 +204,66 @@ export function getPostDetail(channelId, postId, fetcher = request) {
   return fetcher(`/api/channels/${channelId}/posts/${postId}`);
 }
 
+export function updatePost(channelId, postId, data, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/posts/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePost(channelId, postId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/posts/${postId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getPostReactions(channelId, postId, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/posts/${postId}/reactions`);
+}
+
+// Toggle reaction - thêm nếu chưa có, xóa nếu đã có
+export function togglePostReaction(channelId, postId, emoji, fetcher = request) {
+  return fetcher(`/api/channels/${channelId}/posts/${postId}/reactions`, {
+    method: "POST",
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+// Legacy - sử dụng togglePostReaction thay thế
+export function addPostReaction(channelId, postId, emoji, fetcher = request) {
+  return togglePostReaction(channelId, postId, emoji, fetcher);
+}
+
+export function removePostReaction(channelId, postId, emoji, fetcher = request) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/reactions/${encodeURIComponent(emoji)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+// Upload files cho bài đăng
+export function uploadPostFiles(channelId, postId, files, fetcher = request) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+
+  return fetcher(`/api/upload/channel/${channelId}/posts/${postId}/files`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+// Xóa file đính kèm khỏi bài đăng
+export function removePostAttachment(channelId, postId, attachmentId, fetcher = request) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/attachments/${attachmentId}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
 export function getPostComments(channelId, postId, fetcher = request) {
   return fetcher(`/api/channels/${channelId}/posts/${postId}/comments`);
 }
@@ -213,6 +273,22 @@ export function addPostComment(channelId, postId, content, fetcher = request) {
     method: "POST",
     body: JSON.stringify({ content }),
   });
+}
+
+export function updatePostComment(
+  channelId,
+  postId,
+  commentId,
+  content,
+  fetcher = request
+) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/comments/${commentId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }
+  );
 }
 
 export function deletePostComment(
@@ -229,6 +305,82 @@ export function deletePostComment(
   );
 }
 
+export function getCommentReactions(
+  channelId,
+  postId,
+  commentId,
+  fetcher = request
+) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/comments/${commentId}/reactions`
+  );
+}
+
+export function addCommentReaction(
+  channelId,
+  postId,
+  commentId,
+  emoji,
+  fetcher = request
+) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/comments/${commentId}/reactions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    }
+  );
+}
+
+export function removeCommentReaction(
+  channelId,
+  postId,
+  commentId,
+  emoji,
+  fetcher = request
+) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/comments/${commentId}/reactions/${encodeURIComponent(emoji)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+// Toggle comment reaction - thêm nếu chưa có, xóa nếu đã có
+export function toggleCommentReaction(
+  channelId,
+  postId,
+  commentId,
+  emoji,
+  fetcher = request
+) {
+  return fetcher(
+    `/api/channels/${channelId}/posts/${postId}/comments/${commentId}/reactions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    }
+  );
+}
+
+// Upload files cho bình luận
+export function uploadCommentFiles(
+  channelId,
+  postId,
+  commentId,
+  files,
+  fetcher = request
+) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+
+  return fetcher(`/api/upload/channel/${channelId}/posts/${postId}/comments/${commentId}/files`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
 // Chat APIs
 export function getChatMessages(channelId, params = {}, fetcher = request) {
   const queryParams = new URLSearchParams();
@@ -239,8 +391,7 @@ export function getChatMessages(channelId, params = {}, fetcher = request) {
 
   const queryString = queryParams.toString();
   return fetcher(
-    `/api/channels/${channelId}/chat/messages${
-      queryString ? `?${queryString}` : ""
+    `/api/channels/${channelId}/chat/messages${queryString ? `?${queryString}` : ""
     }`
   );
 }
@@ -344,8 +495,7 @@ export function getDirectMessages(
 
   const queryString = queryParams.toString();
   return fetcher(
-    `/api/workspaces/${workspaceId}/direct-messages/conversations/${conversationId}/messages${
-      queryString ? `?${queryString}` : ""
+    `/api/workspaces/${workspaceId}/direct-messages/conversations/${conversationId}/messages${queryString ? `?${queryString}` : ""
     }`
   );
 }

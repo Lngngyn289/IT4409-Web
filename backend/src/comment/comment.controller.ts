@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -16,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { CommentService } from './comment.service';
 import { CreateCommentDto } from './dtos/create-comment.dto';
+import { UpdateCommentDto } from './dtos/update-comment.dto';
 import { CommentResponseDto } from './dtos/comment-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -24,7 +26,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class CommentController {
-  constructor(private readonly commentService: CommentService) {}
+  constructor(private readonly commentService: CommentService) { }
 
   /**
    * POST /api/channels/:channelId/posts/:postId/comments
@@ -133,5 +135,132 @@ export class CommentController {
   ): Promise<{ message: string }> {
     const userId = req.user.id;
     return this.commentService.remove(userId, channelId, postId, commentId);
+  }
+
+  /**
+   * PATCH /api/channels/:channelId/posts/:postId/comments/:commentId
+   * Cập nhật bình luận
+   */
+  @Patch(':commentId')
+  @ApiOperation({
+    summary: 'Cập nhật bình luận',
+    description: 'Chỉ người tạo bình luận mới có quyền chỉnh sửa',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bình luận được cập nhật thành công',
+    type: CommentResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Không có quyền chỉnh sửa (không phải người tạo)',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Channel, bài đăng hoặc bình luận không tồn tại',
+  })
+  async update(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+    @Body() updateCommentDto: UpdateCommentDto,
+  ): Promise<CommentResponseDto> {
+    const userId = req.user.id;
+    return this.commentService.update(
+      userId,
+      channelId,
+      postId,
+      commentId,
+      updateCommentDto,
+    );
+  }
+
+  /**
+   * POST /api/channels/:channelId/posts/:postId/comments/:commentId/reactions
+   * Toggle reaction vào bình luận (thêm nếu chưa có, xóa nếu đã có)
+   */
+  @Post(':commentId/reactions')
+  @ApiOperation({
+    summary: 'Toggle reaction vào bình luận',
+    description: 'Thêm reaction nếu chưa có, xóa nếu đã có. Trả về danh sách reactions mới.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Reaction được toggle thành công',
+  })
+  async toggleReaction(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+    @Body('emoji') emoji: string,
+  ): Promise<{ message: string; reactions: any[] }> {
+    const userId = req.user.id;
+    return this.commentService.toggleReaction(
+      userId,
+      channelId,
+      postId,
+      commentId,
+      emoji,
+    );
+  }
+
+  /**
+   * DELETE /api/channels/:channelId/posts/:postId/comments/:commentId/reactions/:emoji
+   * Xóa reaction khỏi bình luận
+   */
+  @Delete(':commentId/reactions/:emoji')
+  @ApiOperation({
+    summary: 'Xóa reaction khỏi bình luận',
+    description: 'Xóa reaction của mình khỏi bình luận',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reaction đã được xóa',
+  })
+  async removeReaction(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+    @Param('emoji') emoji: string,
+  ): Promise<{ message: string }> {
+    const userId = req.user.id;
+    return this.commentService.removeReaction(
+      userId,
+      channelId,
+      postId,
+      commentId,
+      emoji,
+    );
+  }
+
+  /**
+   * GET /api/channels/:channelId/posts/:postId/comments/:commentId/reactions
+   * Lấy danh sách reactions của bình luận
+   */
+  @Get(':commentId/reactions')
+  @ApiOperation({
+    summary: 'Lấy danh sách reactions của bình luận',
+    description: 'Chỉ Channel Member mới có quyền xem',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách reactions',
+  })
+  async getReactions(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+  ): Promise<any[]> {
+    const userId = req.user.id;
+    return this.commentService.getReactions(
+      userId,
+      channelId,
+      postId,
+      commentId,
+    );
   }
 }
