@@ -17,6 +17,51 @@ export class PostAuthorDto {
   avatarUrl?: string;
 }
 
+export class PostAttachmentDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  fileUrl: string;
+
+  @ApiProperty()
+  fileName?: string;
+
+  @ApiProperty()
+  mimeType?: string;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
+export class PostReactionUserDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  username: string;
+
+  @ApiProperty()
+  fullName: string;
+
+  @ApiProperty({ required: false })
+  avatarUrl?: string;
+}
+
+export class PostReactionDto {
+  @ApiProperty()
+  emoji: string;
+
+  @ApiProperty()
+  count: number;
+
+  @ApiProperty({ type: [PostReactionUserDto] })
+  users: PostReactionUserDto[];
+
+  @ApiProperty()
+  hasReacted: boolean;
+}
+
 export class CommentPreviewDto {
   @ApiProperty()
   id: string;
@@ -49,6 +94,9 @@ export class PostResponseDto {
 
   @ApiProperty()
   author: PostAuthorDto;
+
+  @ApiProperty({ type: [PostAttachmentDto], required: false })
+  attachments?: PostAttachmentDto[];
 }
 
 export class PostDetailResponseDto extends PostResponseDto {
@@ -60,6 +108,9 @@ export class PostDetailResponseDto extends PostResponseDto {
 
   @ApiProperty({ description: 'Total number of comments' })
   totalComments: number;
+
+  @ApiProperty({ type: [PostReactionDto], required: false })
+  reactions?: PostReactionDto[];
 }
 
 export class PostListItemDto {
@@ -77,4 +128,10 @@ export class PostListItemDto {
 
   @ApiProperty({ description: 'Total number of comments' })
   commentCount: number;
+
+  @ApiProperty({ type: [PostAttachmentDto], required: false })
+  attachments?: PostAttachmentDto[];
+
+  @ApiProperty({ type: [PostReactionDto], required: false })
+  reactions?: PostReactionDto[];
 }
