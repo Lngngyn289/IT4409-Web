@@ -11,8 +11,8 @@ import { uploadMessageFiles, searchChannelMessages } from "../api";
 function ChannelChat({
   channelId,
   channelName,
+  workspaceId,
   members = [],
-  onOnlineUsersChange,
   searchInputRef,
   searchFocusSignal,
   isSearchOpen = true,
@@ -54,7 +54,6 @@ function ChannelChat({
     isJoined,
     messages,
     typingUsers,
-    onlineUsers,
     error,
     sendMessage,
     deleteMessage,
@@ -65,7 +64,7 @@ function ChannelChat({
     markAsRead,
     setInitialMessages,
     updateMessage,
-  } = useChatSocket(accessToken, channelId);
+  } = useChatSocket(accessToken, channelId, workspaceId);
 
   const handleAddReaction = useCallback(
     (messageId, emoji) => {
@@ -138,10 +137,6 @@ function ChannelChat({
     [currentUser?.id, removeReaction, setInitialMessages]
   );
 
-  useEffect(() => {
-    if (typeof onOnlineUsersChange !== "function") return;
-    onOnlineUsersChange(onlineUsers);
-  }, [onlineUsers, onOnlineUsersChange]);
 
   // Reset local pagination and message cache when switching channels
   useEffect(() => {

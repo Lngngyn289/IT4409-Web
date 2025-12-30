@@ -67,6 +67,7 @@ function ChannelDetail() {
   const [isMeetingMinimized, setIsMeetingMinimized] = useState(false);
   const [onlineUsersCount, setOnlineUsersCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [workspaceOnlineUserIds, setWorkspaceOnlineUserIds] = useState(new Set());
   const chatSearchInputRef = useRef(null);
   const [chatSearchFocusSignal, setChatSearchFocusSignal] = useState(0);
   const [isChatSearchOpen, setIsChatSearchOpen] = useState(true);
@@ -108,6 +109,44 @@ function ChannelDetail() {
     fetchChannelData();
     fetchPosts();
   }, [fetchChannelData, fetchPosts]);
+
+  // Listen to workspace-level presence events from useWorkspacePresence
+  // This ensures online status is shown correctly when entering workspace (not just channel)
+  useEffect(() => {
+    const handlePresenceUpdate = (event) => {
+      const { userId, isOnline } = event.detail;
+      setWorkspaceOnlineUserIds((prev) => {
+        const next = new Set(prev);
+        if (isOnline) {
+          next.add(userId);
+        } else {
+          next.delete(userId);
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener("presence:user:update", handlePresenceUpdate);
+    return () => {
+      window.removeEventListener("presence:user:update", handlePresenceUpdate);
+    };
+  }, []);
+
+  // Compute online users from workspace presence + channel members
+  useEffect(() => {
+    if (members.length > 0) {
+      const onlineMembersList = members
+        .filter((m) => workspaceOnlineUserIds.has(m.userId))
+        .map((m) => ({
+          id: m.userId,
+          username: m.user?.username,
+          fullName: m.user?.fullName,
+          avatarUrl: m.user?.avatarUrl,
+        }));
+      setOnlineUsers(onlineMembersList);
+      setOnlineUsersCount(onlineMembersList.length);
+    }
+  }, [members, workspaceOnlineUserIds]);
 
 
   const handleUpdateSuccess = (updatedChannel) => {
@@ -726,12 +765,8 @@ function ChannelDetail() {
             <ChannelChat
               channelId={channelId}
               channelName={channel.name}
+              workspaceId={workspace?.id}
               members={members}
-              onOnlineUsersChange={(users) => {
-                const safeUsers = Array.isArray(users) ? users : [];
-                setOnlineUsers(safeUsers);
-                setOnlineUsersCount(safeUsers.length);
-              }}
               searchInputRef={chatSearchInputRef}
               searchFocusSignal={chatSearchFocusSignal}
               isSearchOpen={isChatSearchOpen}
