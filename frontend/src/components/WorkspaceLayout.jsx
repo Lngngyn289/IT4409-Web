@@ -9,6 +9,7 @@ import {
 import useAuth from "../hooks/useAuth";
 import { useToast } from "../contexts/ToastContext";
 import { useMeetingContext } from "../contexts/MeetingContext";
+import { useWorkspacePresence } from "../hooks/useWorkspacePresence";
 import UserMenu from "./UserMenu";
 import CreateChannelModal from "./CreateChannelModal";
 import JoinChannelModal from "./JoinChannelModal";
@@ -21,7 +22,11 @@ import "./WorkspaceLayout.css";
 
 function WorkspaceLayout() {
   const { workspaceId } = useParams();
-  const { authFetch } = useAuth();
+  const { authFetch, accessToken } = useAuth();
+
+  // Initialize workspace-level presence tracking
+  // This ensures online status is tracked regardless of which page (channel/DM) user is on
+  useWorkspacePresence(accessToken, workspaceId);
   const { addToast } = useToast();
   const { isInMeeting } = useMeetingContext();
   const navigate = useNavigate();

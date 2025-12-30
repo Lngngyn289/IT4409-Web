@@ -75,6 +75,36 @@ export function useDMSocket(token, conversationId, workspaceId) {
       }, 15000);
     });
 
+    // Workspace presence events - each socket needs to join workspace to receive these
+    socket.on("workspace:joined", ({ workspaceId: wsId, onlineUserIds }) => {
+      console.log("DM Socket: Joined workspace:", wsId, "Online users:", onlineUserIds);
+      if (Array.isArray(onlineUserIds)) {
+        onlineUserIds.forEach((id) => {
+          window.dispatchEvent(
+            new CustomEvent("presence:user:update", {
+              detail: { userId: id, isOnline: true },
+            })
+          );
+        });
+      }
+    });
+
+    socket.on("presence:user:online", ({ userId }) => {
+      window.dispatchEvent(
+        new CustomEvent("presence:user:update", {
+          detail: { userId, isOnline: true },
+        })
+      );
+    });
+
+    socket.on("presence:user:offline", ({ userId }) => {
+      window.dispatchEvent(
+        new CustomEvent("presence:user:update", {
+          detail: { userId, isOnline: false },
+        })
+      );
+    });
+
     socket.on("disconnect", (reason) => {
       console.log("DM Socket disconnected:", reason);
       setIsConnected(false);
@@ -214,33 +244,6 @@ export function useDMSocket(token, conversationId, workspaceId) {
       console.log(`DM: ${user.username} read messages at ${readAt}`);
     });
 
-    // Global presence events (workspace-agnostic)
-    socket.on("presence:user:online", ({ userId }) => {
-      window.dispatchEvent(
-        new CustomEvent("presence:user:update", {
-          detail: { userId, isOnline: true },
-        })
-      );
-    });
-
-    socket.on("presence:user:offline", ({ userId }) => {
-      window.dispatchEvent(
-        new CustomEvent("presence:user:update", {
-          detail: { userId, isOnline: false },
-        })
-      );
-    });
-
-    socket.on("presence:user:list", ({ userIds }) => {
-      if (!Array.isArray(userIds)) return;
-      userIds.forEach((id) => {
-        window.dispatchEvent(
-          new CustomEvent("presence:user:update", {
-            detail: { userId: id, isOnline: true },
-          })
-        );
-      });
-    });
 
     // Cleanup
     return () => {
@@ -256,6 +259,20 @@ export function useDMSocket(token, conversationId, workspaceId) {
       }
     };
   }, [token, upsertMessage]);
+
+  // Join workspace when workspaceId changes (for presence tracking)
+  // Each socket needs to join workspace room to receive presence events
+  useEffect(() => {
+    if (!socketRef.current || !isConnected || !workspaceId) return;
+
+    socketRef.current.emit("workspace:join", { workspaceId });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.emit("workspace:leave", { workspaceId });
+      }
+    };
+  }, [workspaceId, isConnected]);
 
   // Join conversation when conversationId changes
   useEffect(() => {

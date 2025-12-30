@@ -51,6 +51,12 @@ export class ChatGateway
   // Track userId to socketIds: Map<userId, Set<socketId>>
   private userSockets = new Map<string, Set<string>>();
 
+  // Track online users per workspace: Map<workspaceId, Set<userId>>
+  private workspaceUsers = new Map<string, Set<string>>();
+
+  // Track which workspace each socket is in: Map<socketId, workspaceId>
+  private socketWorkspace = new Map<string, string>();
+
   // Heartbeat tracking for robust presence
   private userHeartbeats = new Map<string, number>();
   private heartbeatChecker: NodeJS.Timeout | null = null;
@@ -157,16 +163,11 @@ export class ChatGateway
       // Initialize heartbeat timestamp
       this.userHeartbeats.set(user.id, Date.now());
 
-      // Broadcast global presence online (workspace-agnostic)
-      this.server.emit('presence:user:online', { userId: user.id });
-
-      // Send current online list to this client
-      client.emit('presence:user:list', {
-        userIds: Array.from(this.userSockets.keys()),
-      });
-
       // Initialize socket channels tracking
       this.socketChannels.set(client.id, new Set());
+
+      // NOTE: We no longer broadcast global presence here.
+      // Presence is now per-workspace and handled by workspace:join event.
 
       // Cập nhật user presence thành online
       try {
@@ -207,17 +208,48 @@ export class ChatGateway
     const user = (client as AuthenticatedSocket).user;
 
     if (user) {
+      // Handle workspace presence - leave the workspace this socket was in
+      const workspaceId = this.socketWorkspace.get(client.id);
+      if (workspaceId) {
+        const workspaceUserSet = this.workspaceUsers.get(workspaceId);
+        if (workspaceUserSet) {
+          // Check if user has other sockets in same workspace
+          const userSocketSet = this.userSockets.get(user.id);
+          const userHasOtherSocketsInWorkspace =
+            userSocketSet &&
+            Array.from(userSocketSet).some(
+              (sid) =>
+                sid !== client.id &&
+                this.socketWorkspace.get(sid) === workspaceId,
+            );
+
+          if (!userHasOtherSocketsInWorkspace) {
+            workspaceUserSet.delete(user.id);
+
+            // Broadcast offline to workspace members only
+            this.server
+              .to(`workspace:${workspaceId}`)
+              .emit('presence:user:offline', {
+                userId: user.id,
+                workspaceId,
+              });
+
+            if (workspaceUserSet.size === 0) {
+              this.workspaceUsers.delete(workspaceId);
+            }
+          }
+        }
+        this.socketWorkspace.delete(client.id);
+      }
+
       // Remove socket from user's socket set
       const userSocketSet = this.userSockets.get(user.id);
       if (userSocketSet) {
         userSocketSet.delete(client.id);
 
-        // If user has no more sockets, mark as offline
+        // If user has no more sockets, mark as offline in DB
         if (userSocketSet.size === 0) {
           this.userSockets.delete(user.id);
-
-          // Broadcast global presence offline (workspace-agnostic)
-          this.server.emit('presence:user:offline', { userId: user.id });
 
           // Update presence to offline
           try {
@@ -280,6 +312,166 @@ export class ChatGateway
     if (user) {
       this.userHeartbeats.set(user.id, Date.now());
     }
+  }
+
+  /**
+   * Join a workspace room for presence tracking
+   * This should be called when user enters a workspace
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('workspace:join')
+  async handleJoinWorkspace(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { workspaceId: string },
+  ) {
+    const { workspaceId } = data;
+    const user = client.user;
+
+    try {
+      // Verify user is member of workspace
+      const membership = await this.prisma.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: {
+            workspaceId,
+            userId: user.id,
+          },
+        },
+      });
+
+      if (!membership) {
+        client.emit('error', {
+          message: 'You are not a member of this workspace',
+        });
+        return;
+      }
+
+      // Leave previous workspace if any
+      const previousWorkspaceId = this.socketWorkspace.get(client.id);
+      if (previousWorkspaceId && previousWorkspaceId !== workspaceId) {
+        client.leave(`workspace:${previousWorkspaceId}`);
+
+        // Check if user has other sockets in previous workspace
+        const userSocketSet = this.userSockets.get(user.id);
+        const userHasOtherSocketsInPrevWorkspace =
+          userSocketSet &&
+          Array.from(userSocketSet).some(
+            (sid) =>
+              sid !== client.id &&
+              this.socketWorkspace.get(sid) === previousWorkspaceId,
+          );
+
+        if (!userHasOtherSocketsInPrevWorkspace) {
+          const prevWorkspaceUserSet =
+            this.workspaceUsers.get(previousWorkspaceId);
+          if (prevWorkspaceUserSet) {
+            prevWorkspaceUserSet.delete(user.id);
+
+            // Broadcast offline to previous workspace
+            this.server
+              .to(`workspace:${previousWorkspaceId}`)
+              .emit('presence:user:offline', {
+                userId: user.id,
+                workspaceId: previousWorkspaceId,
+              });
+
+            if (prevWorkspaceUserSet.size === 0) {
+              this.workspaceUsers.delete(previousWorkspaceId);
+            }
+          }
+        }
+      }
+
+      // Join new workspace room
+      client.join(`workspace:${workspaceId}`);
+      this.socketWorkspace.set(client.id, workspaceId);
+
+      // Track user in workspace
+      if (!this.workspaceUsers.has(workspaceId)) {
+        this.workspaceUsers.set(workspaceId, new Set());
+      }
+      const isNewUserInWorkspace = !this.workspaceUsers
+        .get(workspaceId)!
+        .has(user.id);
+      this.workspaceUsers.get(workspaceId)!.add(user.id);
+
+      // Get list of online users in this workspace
+      const onlineUserIds = Array.from(
+        this.workspaceUsers.get(workspaceId) || [],
+      );
+
+      // Notify workspace members about new online user (only if truly new)
+      if (isNewUserInWorkspace) {
+        this.server.to(`workspace:${workspaceId}`).emit('presence:user:online', {
+          userId: user.id,
+          workspaceId,
+          user: {
+            id: user.id,
+            username: user.username,
+            fullName: user.fullName,
+            avatarUrl: user.avatarUrl,
+          },
+        });
+      }
+
+      // Send current online users list to this client
+      client.emit('workspace:joined', {
+        workspaceId,
+        onlineUserIds,
+      });
+
+      this.logger.log(
+        `User ${user.username} joined workspace ${workspaceId} (online: ${onlineUserIds.length})`,
+      );
+    } catch (error) {
+      this.logger.error(`Error joining workspace: ${error.message}`);
+      client.emit('error', { message: 'Không thể tham gia workspace' });
+    }
+  }
+
+  /**
+   * Leave a workspace room
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('workspace:leave')
+  handleLeaveWorkspace(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { workspaceId: string },
+  ) {
+    const { workspaceId } = data;
+    const user = client.user;
+
+    // Leave Socket.IO room
+    client.leave(`workspace:${workspaceId}`);
+
+    // Check if user has other sockets in this workspace
+    const userSocketSet = this.userSockets.get(user.id);
+    const userHasOtherSocketsInWorkspace =
+      userSocketSet &&
+      Array.from(userSocketSet).some(
+        (sid) =>
+          sid !== client.id && this.socketWorkspace.get(sid) === workspaceId,
+      );
+
+    if (!userHasOtherSocketsInWorkspace) {
+      const workspaceUserSet = this.workspaceUsers.get(workspaceId);
+      if (workspaceUserSet) {
+        workspaceUserSet.delete(user.id);
+
+        // Broadcast offline to workspace
+        this.server.to(`workspace:${workspaceId}`).emit('presence:user:offline', {
+          userId: user.id,
+          workspaceId,
+        });
+
+        if (workspaceUserSet.size === 0) {
+          this.workspaceUsers.delete(workspaceId);
+        }
+      }
+    }
+
+    this.socketWorkspace.delete(client.id);
+    client.emit('workspace:left', { workspaceId });
+    this.logger.log(`User ${user.username} left workspace ${workspaceId}`);
   }
 
   /**

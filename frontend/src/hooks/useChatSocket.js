@@ -7,8 +7,9 @@ const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
  * Custom hook for Socket.IO chat functionality
  * @param {string} token - JWT access token
  * @param {string} channelId - Channel ID to connect to
+ * @param {string} workspaceId - Workspace ID for presence tracking
  */
-export function useChatSocket(token, channelId) {
+export function useChatSocket(token, channelId, workspaceId) {
   const socketRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -60,6 +61,36 @@ export function useChatSocket(token, channelId) {
           socket.emit("presence:heartbeat");
         } catch {}
       }, 15000);
+    });
+
+    // Workspace presence events - each socket needs to join workspace to receive these
+    socket.on("workspace:joined", ({ workspaceId: wsId, onlineUserIds }) => {
+      console.log("Channel Socket: Joined workspace:", wsId, "Online users:", onlineUserIds);
+      if (Array.isArray(onlineUserIds)) {
+        onlineUserIds.forEach((id) => {
+          window.dispatchEvent(
+            new CustomEvent("presence:user:update", {
+              detail: { userId: id, isOnline: true },
+            })
+          );
+        });
+      }
+    });
+
+    socket.on("presence:user:online", ({ userId }) => {
+      window.dispatchEvent(
+        new CustomEvent("presence:user:update", {
+          detail: { userId, isOnline: true },
+        })
+      );
+    });
+
+    socket.on("presence:user:offline", ({ userId }) => {
+      window.dispatchEvent(
+        new CustomEvent("presence:user:update", {
+          detail: { userId, isOnline: false },
+        })
+      );
     });
 
     socket.on("disconnect", (reason) => {
@@ -210,6 +241,20 @@ export function useChatSocket(token, channelId) {
       }
     };
   }, [token]);
+
+  // Join workspace when workspaceId changes (for presence tracking)
+  // Each socket needs to join workspace room to receive presence events
+  useEffect(() => {
+    if (!socketRef.current || !isConnected || !workspaceId) return;
+
+    socketRef.current.emit("workspace:join", { workspaceId });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.emit("workspace:leave", { workspaceId });
+      }
+    };
+  }, [workspaceId, isConnected]);
 
   // Join channel when channelId changes
   useEffect(() => {
