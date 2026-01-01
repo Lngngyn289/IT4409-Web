@@ -1,15 +1,9 @@
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      # deploy thì tạo file compose khác
-      # xóa context và dockerfile, thay bằng:
-      #image: 
+    image: lngngyn/it4409-backend:latest   # thay build bằng image
     container_name: nestjs_backend
     restart: always
     ports:
       - "3000:3000"
-    
     env_file:
-      - ./backend/.env #maybe sửa đường dẫn
+      - /home/ec2-user/backend/.env        # đường dẫn trên EC2

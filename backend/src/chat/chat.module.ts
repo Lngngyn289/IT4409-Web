@@ -5,11 +5,13 @@ import { ChatController } from './chat.controller';
 import { DirectChatController } from './direct-chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { RedisService } from './redis.service';
 import { WsJwtGuard } from './ws-jwt.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [
+    ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -20,7 +22,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [ChatController, DirectChatController],
-  providers: [ChatService, ChatGateway, WsJwtGuard],
+  providers: [ChatService, ChatGateway, RedisService, WsJwtGuard],
   exports: [ChatService, ChatGateway],
 })
 export class ChatModule {}

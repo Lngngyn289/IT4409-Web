@@ -9,4 +9,9 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('/whoami')
+  whoAmI() {
+    return { server: process.env.SERVER_NAME }; // SERVER_NAME="A" hoặc "B"
+  }
 }

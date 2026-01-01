@@ -5,6 +5,7 @@ import VideoGrid from "./VideoGrid";
 import VideoTile from "./VideoTile";
 import MeetingControls from "./MeetingControls";
 import MeetingParticipants from "./MeetingParticipants";
+import { API_URL } from "../api";
 
 function ChannelMeeting({
   channelId,
@@ -377,7 +378,7 @@ function ChannelMeeting({
         if (!token) return;
         leaveNotifiedRef.current = true;
         // Use fetch with keepalive to reliably send on unload
-        fetch(`/api/channels/${channelId}/meetings/leave`, {
+        fetch(`${API_URL}/api/channels/${channelId}/meetings/leave`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -698,6 +699,30 @@ function ChannelMeeting({
                     Waiting for video...
                   </div>
                 )}
+                
+                {/* Hidden audio elements for all remote participants */}
+                {Object.values(participants).map((participant) => (
+                  <audio
+                    key={participant.session_id}
+                    autoPlay
+                    playsInline
+                    ref={(audioEl) => {
+                      if (audioEl && participant.tracks?.audio) {
+                        const audioTrack =
+                          participant.tracks.audio.persistentTrack ||
+                          participant.tracks.audio.track ||
+                          participant.audioTrack;
+                        if (audioTrack) {
+                          const currentTrack = audioEl.srcObject?.getAudioTracks()[0];
+                          if (currentTrack?.id !== audioTrack.id) {
+                            audioEl.srcObject = new MediaStream([audioTrack]);
+                            audioEl.play().catch(() => {});
+                          }
+                        }
+                      }
+                    }}
+                  />
+                ))}
               </div>
 
               <div className="flex items-center justify-between bg-gray-800 px-3 py-2">
@@ -897,14 +922,29 @@ function ChannelMeeting({
           </div>
 
           {/* Main content area */}
-          <div className="flex-1 flex flex-col overflow-hidden relative">
-            {/* Video grid - fills entire area */}
-            <div className="flex-1 bg-gray-900 overflow-hidden">
-              <VideoGrid
-                participants={participants}
-                localParticipant={localParticipant}
-                screenShare={screenShare}
-              />
+          <div className="flex-1 flex flex-row overflow-hidden">
+            {/* Video grid - uses grid-rows-[1fr_auto] */}
+            <div className="flex-1 bg-gray-900 overflow-hidden grid grid-rows-[1fr_auto]">
+              <div className="bg-gray-900 overflow-hidden min-h-0">
+                <VideoGrid
+                  participants={participants}
+                  localParticipant={localParticipant}
+                  screenShare={screenShare}
+                />
+              </div>
+
+              {/* Controls - auto height */}
+              <div className="bg-gray-900 border-t border-gray-700 flex items-center justify-center p-4">
+                <MeetingControls
+                  onToggleMic={handleToggleMic}
+                  onToggleCamera={handleToggleCamera}
+                  onToggleScreenShare={handleToggleScreenShare}
+                  onLeave={handleLeaveMeeting}
+                  isMicOn={isMicOn}
+                  isCameraOn={isCameraOn}
+                  isScreenSharing={isScreenSharing}
+                />
+              </div>
             </div>
 
             {/* Participants sidebar */}
@@ -915,19 +955,6 @@ function ChannelMeeting({
                 onClose={() => setShowParticipants(false)}
               />
             )}
-          </div>
-
-          {/* Controls - Positioned absolutely at bottom of video area */}
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
-            <MeetingControls
-              onToggleMic={handleToggleMic}
-              onToggleCamera={handleToggleCamera}
-              onToggleScreenShare={handleToggleScreenShare}
-              onLeave={handleLeaveMeeting}
-              isMicOn={isMicOn}
-              isCameraOn={isCameraOn}
-              isScreenSharing={isScreenSharing}
-            />
           </div>
         </div>
         {toast && (

@@ -120,16 +120,6 @@ export class MeetingService {
             title: dto.title,
             roomUrl: room.roomUrl,
             roomName: room.roomName, // lưu tên room
-            participants: {
-              // NOTE: tự động thêm host vào participants
-              create: {
-                userId,
-                joinedAt: new Date(),
-              },
-            },
-          },
-          include: {
-            participants: true,
           },
         });
       });
@@ -192,12 +182,15 @@ export class MeetingService {
     });
 
     if (existing) {
-      if (existing.leftAt) {
-        await this.prisma.channelMeetingParticipant.update({
-          where: { id: existing.id },
-          data: { leftAt: null },
-        });
+      // Check if user is already actively in the meeting (hasn't left yet)
+      if (!existing.leftAt) {
+        throw new BadRequestException('You are already in this meeting. Please close other tabs before joining again.');
       }
+      // User previously left, allow them to rejoin
+      await this.prisma.channelMeetingParticipant.update({
+        where: { id: existing.id },
+        data: { leftAt: null },
+      });
     } else {
       await this.prisma.channelMeetingParticipant.create({
         data: { meetingId: meeting.id, userId },

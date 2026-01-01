@@ -110,7 +110,7 @@ function WorkspaceLayout() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {/* Global Header - HUST Collab Platform */}
+      {/* Global Header - HUST Minislack */}
       <header
         className={`flex-shrink-0 border-b border-slate-800 bg-slate-900 transition ${
           isInMeeting ? "pointer-events-none opacity-80" : ""
@@ -119,7 +119,7 @@ function WorkspaceLayout() {
         <div className="px-6 py-3">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-xl font-bold text-white whitespace-nowrap">
-              HUST Collab Platform
+              HUST Minislack
             </h1>
 
             {/* Search Bar - Only in workspace */}

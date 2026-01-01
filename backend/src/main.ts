@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { PrismaService } from './prisma/prisma.service';
 import cookieParser from 'cookie-parser';
+import { RedisIoAdapter } from './chat/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,6 +16,28 @@ async function bootstrap() {
     origin: clientOrigin,
     credentials: true,
   });
+
+  // Setup Redis adapter for Socket.IO clustering
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT;
+  
+  if (redisHost && redisPort) {
+    console.log(`🔄 Attempting to connect to Redis at ${redisHost}:${redisPort}`);
+    const redisIoAdapter = new RedisIoAdapter(
+      app,
+      redisHost,
+      parseInt(redisPort, 10),
+    );
+    const connected = await redisIoAdapter.connectToRedis();
+    if (connected) {
+      app.useWebSocketAdapter(redisIoAdapter);
+      console.log('✅ Redis adapter enabled for cross-server messaging');
+    } else {
+      console.log('⚠️ Redis connection failed, using local adapter only');
+    }
+  } else {
+    console.log('ℹ️ Redis not configured, using default in-memory adapter');
+  }
 
   const config = new DocumentBuilder()
     .setTitle('Workspace + Auth API')

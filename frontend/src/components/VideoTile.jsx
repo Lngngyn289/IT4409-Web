@@ -79,7 +79,7 @@ function VideoTile({ participant, isLocal = false, isScreenShare = false }) {
   const hasAudio = participant?.audio;
 
   return (
-    <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video flex items-center justify-center">
+    <div className="relative bg-gray-900 rounded-lg overflow-hidden w-full h-full max-h-full flex items-center justify-center">
       {/* Video element */}
       {hasVideo ? (
         <video
@@ -87,7 +87,7 @@ function VideoTile({ participant, isLocal = false, isScreenShare = false }) {
           autoPlay
           playsInline
           muted={isLocal}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         />
       ) : (
         // Avatar placeholder when video is off

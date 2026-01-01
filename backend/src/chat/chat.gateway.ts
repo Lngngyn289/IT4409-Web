@@ -13,6 +13,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from './chat.service';
+import { RedisService } from './redis.service';
 import { WsJwtGuard, validateSocketToken } from './ws-jwt.guard';
 import type { AuthenticatedSocket } from './ws-jwt.guard';
 import { CreateMessageDto } from './dtos/create-message.dto';
@@ -42,29 +43,14 @@ export class ChatGateway
 
   private logger = new Logger('ChatGateway');
 
-  // Track online users per channel: Map<channelId, Map<userId, OnlineUser>>
-  private channelUsers = new Map<string, Map<string, OnlineUser>>();
-
-  // Track which channels each socket is in: Map<socketId, Set<channelId>>
-  private socketChannels = new Map<string, Set<string>>();
-
-  // Track userId to socketIds: Map<userId, Set<socketId>>
-  private userSockets = new Map<string, Set<string>>();
-
-  // Track online users per workspace: Map<workspaceId, Set<userId>>
-  private workspaceUsers = new Map<string, Set<string>>();
-
-  // Track which workspace each socket is in: Map<socketId, workspaceId>
-  private socketWorkspace = new Map<string, string>();
-
   // Heartbeat tracking for robust presence
-  private userHeartbeats = new Map<string, number>();
   private heartbeatChecker: NodeJS.Timeout | null = null;
 
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
     private chatService: ChatService,
+    private redisService: RedisService,
   ) {}
 
   afterInit() {
@@ -72,14 +58,19 @@ export class ChatGateway
 
     // Start heartbeat checker: force offline if no heartbeat within 60s
     if (!this.heartbeatChecker) {
-      this.heartbeatChecker = setInterval(() => {
+      this.heartbeatChecker = setInterval(async () => {
         const now = Date.now();
-        for (const [userId, socketIds] of this.userSockets.entries()) {
-          const last = this.userHeartbeats.get(userId) ?? 0;
+        const heartbeats = await this.redisService.getAllHeartbeats();
+        
+        for (const [userId, last] of heartbeats.entries()) {
           if (now - last > 60_000) {
             this.logger.warn(
               `Heartbeat timeout for user ${userId}, forcing offline`,
             );
+            
+            // Get all sockets for this user
+            const socketIds = await this.redisService.getUserSockets(userId);
+            
             // Disconnect all sockets for this user
             for (const socketId of socketIds) {
               try {
@@ -91,9 +82,11 @@ export class ChatGateway
                 );
               }
             }
+            
             // Update presence to offline and broadcast
             this.server.emit('presence:user:offline', { userId });
-            this.prisma.userPresence
+            
+            await this.prisma.userPresence
               .upsert({
                 where: { userId },
                 update: {
@@ -112,9 +105,6 @@ export class ChatGateway
                   `Failed to update presence offline for ${userId}: ${err.message}`,
                 ),
               );
-            // Clean maps
-            this.userSockets.delete(userId);
-            this.userHeartbeats.delete(userId);
           }
         }
       }, 30_000);
@@ -154,17 +144,11 @@ export class ChatGateway
       // Gắn user info vào socket
       (client as AuthenticatedSocket).user = user;
 
-      // Track user socket
-      if (!this.userSockets.has(user.id)) {
-        this.userSockets.set(user.id, new Set());
-      }
-      this.userSockets.get(user.id)!.add(client.id);
+      // Track user socket in Redis
+      await this.redisService.addUserSocket(user.id, client.id);
 
-      // Initialize heartbeat timestamp
-      this.userHeartbeats.set(user.id, Date.now());
-
-      // Initialize socket channels tracking
-      this.socketChannels.set(client.id, new Set());
+      // Initialize heartbeat timestamp in Redis
+      await this.redisService.setHeartbeat(user.id, Date.now());
 
       // NOTE: We no longer broadcast global presence here.
       // Presence is now per-workspace and handled by workspace:join event.
@@ -209,93 +193,77 @@ export class ChatGateway
 
     if (user) {
       // Handle workspace presence - leave the workspace this socket was in
-      const workspaceId = this.socketWorkspace.get(client.id);
+      const workspaceId = await this.redisService.getSocketWorkspace(client.id);
       if (workspaceId) {
-        const workspaceUserSet = this.workspaceUsers.get(workspaceId);
-        if (workspaceUserSet) {
-          // Check if user has other sockets in same workspace
-          const userSocketSet = this.userSockets.get(user.id);
-          const userHasOtherSocketsInWorkspace =
-            userSocketSet &&
-            Array.from(userSocketSet).some(
-              (sid) =>
-                sid !== client.id &&
-                this.socketWorkspace.get(sid) === workspaceId,
-            );
+        // Check if user has other sockets in same workspace
+        const userHasOtherSocketsInWorkspace =
+          (await this.redisService.countUserSocketsInWorkspace(
+            user.id,
+            workspaceId,
+          )) > 1;
 
-          if (!userHasOtherSocketsInWorkspace) {
-            workspaceUserSet.delete(user.id);
+        if (!userHasOtherSocketsInWorkspace) {
+          await this.redisService.removeWorkspaceUser(workspaceId, user.id);
 
-            // Broadcast offline to workspace members only
-            this.server
-              .to(`workspace:${workspaceId}`)
-              .emit('presence:user:offline', {
-                userId: user.id,
-                workspaceId,
-              });
-
-            if (workspaceUserSet.size === 0) {
-              this.workspaceUsers.delete(workspaceId);
-            }
-          }
+          // Broadcast offline to workspace members only
+          this.server
+            .to(`workspace:${workspaceId}`)
+            .emit('presence:user:offline', {
+              userId: user.id,
+              workspaceId,
+            });
         }
-        this.socketWorkspace.delete(client.id);
+        await this.redisService.deleteSocketWorkspace(client.id);
       }
 
       // Remove socket from user's socket set
-      const userSocketSet = this.userSockets.get(user.id);
-      if (userSocketSet) {
-        userSocketSet.delete(client.id);
+      await this.redisService.removeUserSocket(user.id, client.id);
 
-        // If user has no more sockets, mark as offline in DB
-        if (userSocketSet.size === 0) {
-          this.userSockets.delete(user.id);
-
-          // Update presence to offline
-          try {
-            await this.prisma.userPresence.upsert({
-              where: { userId: user.id },
-              update: {
-                status: 'offline',
-                lastSeen: new Date(),
-                updatedAt: new Date(),
-              },
-              create: {
-                userId: user.id,
-                status: 'offline',
-                lastSeen: new Date(),
-              },
-            });
-          } catch (err) {
-            this.logger.warn(
-              `Failed to update presence for user ${user.id}:`,
-              err.message,
-            );
-            // Don't throw - presence update is non-critical
-          }
+      // If user has no more sockets, mark as offline in DB
+      const hasMoreSockets = await this.redisService.hasUserSockets(user.id);
+      if (!hasMoreSockets) {
+        // Update presence to offline
+        try {
+          await this.prisma.userPresence.upsert({
+            where: { userId: user.id },
+            update: {
+              status: 'offline',
+              lastSeen: new Date(),
+              updatedAt: new Date(),
+            },
+            create: {
+              userId: user.id,
+              status: 'offline',
+              lastSeen: new Date(),
+            },
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Failed to update presence for user ${user.id}:`,
+            err.message,
+          );
+          // Don't throw - presence update is non-critical
         }
       }
 
       // Leave all channels this socket was in
-      const channels = this.socketChannels.get(client.id);
-      if (channels) {
-        for (const channelId of channels) {
-          this.removeUserFromChannel(user.id, channelId, client.id);
+      const channels = await this.redisService.getSocketChannels(client.id);
+      for (const channelId of channels) {
+        await this.removeUserFromChannel(user.id, channelId, client.id);
 
-          // Notify channel members
-          this.server.to(`channel:${channelId}`).emit('user:offline', {
-            channelId,
-            user: {
-              id: user.id,
-              username: user.username,
-              fullName: user.fullName,
-              avatarUrl: user.avatarUrl,
-            },
-          });
-        }
+        // Notify channel members
+        this.server.to(`channel:${channelId}`).emit('user:offline', {
+          channelId,
+          user: {
+            id: user.id,
+            username: user.username,
+            fullName: user.fullName,
+            avatarUrl: user.avatarUrl,
+          },
+        });
       }
 
-      this.socketChannels.delete(client.id);
+      await this.redisService.deleteSocketChannels(client.id);
       this.logger.log(
         `Client disconnected: ${client.id} (User: ${user.username})`,
       );
@@ -307,10 +275,10 @@ export class ChatGateway
    */
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('presence:heartbeat')
-  handlePresenceHeartbeat(@ConnectedSocket() client: AuthenticatedSocket) {
+  async handlePresenceHeartbeat(@ConnectedSocket() client: AuthenticatedSocket) {
     const user = client.user;
     if (user) {
-      this.userHeartbeats.set(user.id, Date.now());
+      await this.redisService.setHeartbeat(user.id, Date.now());
     }
   }
 
@@ -346,57 +314,49 @@ export class ChatGateway
       }
 
       // Leave previous workspace if any
-      const previousWorkspaceId = this.socketWorkspace.get(client.id);
+      const previousWorkspaceId = await this.redisService.getSocketWorkspace(
+        client.id,
+      );
       if (previousWorkspaceId && previousWorkspaceId !== workspaceId) {
         client.leave(`workspace:${previousWorkspaceId}`);
 
         // Check if user has other sockets in previous workspace
-        const userSocketSet = this.userSockets.get(user.id);
         const userHasOtherSocketsInPrevWorkspace =
-          userSocketSet &&
-          Array.from(userSocketSet).some(
-            (sid) =>
-              sid !== client.id &&
-              this.socketWorkspace.get(sid) === previousWorkspaceId,
-          );
+          (await this.redisService.countUserSocketsInWorkspace(
+            user.id,
+            previousWorkspaceId,
+          )) > 1;
 
         if (!userHasOtherSocketsInPrevWorkspace) {
-          const prevWorkspaceUserSet =
-            this.workspaceUsers.get(previousWorkspaceId);
-          if (prevWorkspaceUserSet) {
-            prevWorkspaceUserSet.delete(user.id);
+          await this.redisService.removeWorkspaceUser(
+            previousWorkspaceId,
+            user.id,
+          );
 
-            // Broadcast offline to previous workspace
-            this.server
-              .to(`workspace:${previousWorkspaceId}`)
-              .emit('presence:user:offline', {
-                userId: user.id,
-                workspaceId: previousWorkspaceId,
-              });
-
-            if (prevWorkspaceUserSet.size === 0) {
-              this.workspaceUsers.delete(previousWorkspaceId);
-            }
-          }
+          // Broadcast offline to previous workspace
+          this.server
+            .to(`workspace:${previousWorkspaceId}`)
+            .emit('presence:user:offline', {
+              userId: user.id,
+              workspaceId: previousWorkspaceId,
+            });
         }
       }
 
       // Join new workspace room
       client.join(`workspace:${workspaceId}`);
-      this.socketWorkspace.set(client.id, workspaceId);
+      await this.redisService.setSocketWorkspace(client.id, workspaceId);
 
       // Track user in workspace
-      if (!this.workspaceUsers.has(workspaceId)) {
-        this.workspaceUsers.set(workspaceId, new Set());
-      }
-      const isNewUserInWorkspace = !this.workspaceUsers
-        .get(workspaceId)!
-        .has(user.id);
-      this.workspaceUsers.get(workspaceId)!.add(user.id);
+      const isNewUserInWorkspace = !(await this.redisService.isUserInWorkspace(
+        workspaceId,
+        user.id,
+      ));
+      await this.redisService.addWorkspaceUser(workspaceId, user.id);
 
       // Get list of online users in this workspace
-      const onlineUserIds = Array.from(
-        this.workspaceUsers.get(workspaceId) || [],
+      const onlineUserIds = await this.redisService.getWorkspaceUsers(
+        workspaceId,
       );
 
       // Notify workspace members about new online user (only if truly new)
@@ -433,7 +393,7 @@ export class ChatGateway
    */
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('workspace:leave')
-  handleLeaveWorkspace(
+  async handleLeaveWorkspace(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { workspaceId: string },
   ) {
@@ -444,32 +404,23 @@ export class ChatGateway
     client.leave(`workspace:${workspaceId}`);
 
     // Check if user has other sockets in this workspace
-    const userSocketSet = this.userSockets.get(user.id);
     const userHasOtherSocketsInWorkspace =
-      userSocketSet &&
-      Array.from(userSocketSet).some(
-        (sid) =>
-          sid !== client.id && this.socketWorkspace.get(sid) === workspaceId,
-      );
+      (await this.redisService.countUserSocketsInWorkspace(
+        user.id,
+        workspaceId,
+      )) > 1;
 
     if (!userHasOtherSocketsInWorkspace) {
-      const workspaceUserSet = this.workspaceUsers.get(workspaceId);
-      if (workspaceUserSet) {
-        workspaceUserSet.delete(user.id);
+      await this.redisService.removeWorkspaceUser(workspaceId, user.id);
 
-        // Broadcast offline to workspace
-        this.server.to(`workspace:${workspaceId}`).emit('presence:user:offline', {
-          userId: user.id,
-          workspaceId,
-        });
-
-        if (workspaceUserSet.size === 0) {
-          this.workspaceUsers.delete(workspaceId);
-        }
-      }
+      // Broadcast offline to workspace
+      this.server.to(`workspace:${workspaceId}`).emit('presence:user:offline', {
+        userId: user.id,
+        workspaceId,
+      });
     }
 
-    this.socketWorkspace.delete(client.id);
+    await this.redisService.deleteSocketWorkspace(client.id);
     client.emit('workspace:left', { workspaceId });
     this.logger.log(`User ${user.username} left workspace ${workspaceId}`);
   }
@@ -500,13 +451,13 @@ export class ChatGateway
       client.join(`channel:${channelId}`);
 
       // Track user in channel
-      this.addUserToChannel(user, channelId, client.id);
+      await this.addUserToChannel(user, channelId, client.id);
 
       // Track channel for this socket
-      this.socketChannels.get(client.id)?.add(channelId);
+      await this.redisService.addSocketChannel(client.id, channelId);
 
       // Get online users in channel
-      const onlineUsers = this.getOnlineUsersInChannel(channelId);
+      const onlineUsers = await this.getOnlineUsersInChannel(channelId);
 
       // Notify channel members about new online user
       this.server.to(`channel:${channelId}`).emit('user:online', {
@@ -548,8 +499,8 @@ export class ChatGateway
     client.leave(`channel:${channelId}`);
 
     // Remove from tracking
-    this.removeUserFromChannel(user.id, channelId, client.id);
-    this.socketChannels.get(client.id)?.delete(channelId);
+    await this.removeUserFromChannel(user.id, channelId, client.id);
+    await this.redisService.removeSocketChannel(client.id, channelId);
 
     // Notify channel members
     this.server.to(`channel:${channelId}`).emit('user:offline', {
@@ -893,66 +844,55 @@ export class ChatGateway
     return workspaceMember?.role.name === 'WORKSPACE_ADMIN';
   }
 
-  private addUserToChannel(
+  private async addUserToChannel(
     user: AuthenticatedSocket['user'],
     channelId: string,
     socketId: string,
   ) {
-    if (!this.channelUsers.has(channelId)) {
-      this.channelUsers.set(channelId, new Map());
-    }
+    // Add user data to channel
+    await this.redisService.addChannelUser(channelId, user.id, {
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      avatarUrl: user.avatarUrl,
+    });
 
-    const channelUserMap = this.channelUsers.get(channelId)!;
-
-    if (!channelUserMap.has(user.id)) {
-      channelUserMap.set(user.id, {
-        userId: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        avatarUrl: user.avatarUrl,
-        socketIds: new Set(),
-      });
-    }
-
-    channelUserMap.get(user.id)!.socketIds.add(socketId);
+    // Track socket for this user in channel
+    await this.redisService.addChannelUserSocket(channelId, user.id, socketId);
   }
 
-  private removeUserFromChannel(
+  private async removeUserFromChannel(
     userId: string,
     channelId: string,
     socketId: string,
   ) {
-    const channelUserMap = this.channelUsers.get(channelId);
-    if (!channelUserMap) return;
+    // Remove socket from user's channel sockets
+    await this.redisService.removeChannelUserSocket(channelId, userId, socketId);
 
-    const userInfo = channelUserMap.get(userId);
-    if (!userInfo) return;
+    // Check if user still has other sockets in this channel
+    const hasOtherSockets = await this.redisService.hasChannelUserSockets(
+      channelId,
+      userId,
+    );
 
-    userInfo.socketIds.delete(socketId);
-
-    // If user has no more sockets in this channel, remove them
-    if (userInfo.socketIds.size === 0) {
-      channelUserMap.delete(userId);
-    }
-
-    // If channel has no users, remove channel from map
-    if (channelUserMap.size === 0) {
-      this.channelUsers.delete(channelId);
+    // If user has no more sockets in this channel, remove user from channel
+    if (!hasOtherSockets) {
+      await this.redisService.removeChannelUser(channelId, userId);
     }
   }
 
-  private getOnlineUsersInChannel(
+  private async getOnlineUsersInChannel(
     channelId: string,
-  ): Array<{
-    id: string;
-    username: string;
-    fullName: string;
-    avatarUrl?: string | null;
-  }> {
-    const channelUserMap = this.channelUsers.get(channelId);
-    if (!channelUserMap) return [];
-
-    return Array.from(channelUserMap.values()).map((user) => ({
+  ): Promise<
+    Array<{
+      id: string;
+      username: string;
+      fullName: string;
+      avatarUrl?: string | null;
+    }>
+  > {
+    const users = await this.redisService.getChannelUsers(channelId);
+    return users.map((user) => ({
       id: user.userId,
       username: user.username,
       fullName: user.fullName,
@@ -970,12 +910,10 @@ export class ChatGateway
   /**
    * Public method to emit to specific user
    */
-  emitToUser(userId: string, event: string, data: any) {
-    const socketIds = this.userSockets.get(userId);
-    if (socketIds) {
-      for (const socketId of socketIds) {
-        this.server.to(socketId).emit(event, data);
-      }
+  async emitToUser(userId: string, event: string, data: any) {
+    const socketIds = await this.redisService.getUserSockets(userId);
+    for (const socketId of socketIds) {
+      this.server.to(socketId).emit(event, data);
     }
   }
 
@@ -1032,7 +970,7 @@ export class ChatGateway
 
       // Check if other participant is online
       const otherParticipantOnline = otherParticipant
-        ? this.userSockets.has(otherParticipant.userId)
+        ? await this.redisService.hasUserSockets(otherParticipant.userId)
         : false;
 
       client.emit('dm:joined', {
@@ -1042,7 +980,7 @@ export class ChatGateway
 
       // Notify other participant that user is now in the conversation
       if (otherParticipant) {
-        this.emitToUser(otherParticipant.userId, 'dm:user:online', {
+        await this.emitToUser(otherParticipant.userId, 'dm:user:online', {
           conversationId,
           user: {
             id: user.id,

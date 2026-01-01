@@ -15,7 +15,7 @@ function AuthLayout({
         <section className="order-1 rounded-xl bg-gray-50 p-5 shadow-sm ring-1 ring-gray-200 lg:order-2 lg:p-7">
           <div className="mb-8">
             <p className="text-sm font-medium uppercase tracking-wider text-blue-600">
-              Hust Collab Platform
+              HUST Minislack
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-gray-900 lg:text-[34px]">{title}</h1>
             {subtitle && <p className="mt-3 text-base text-gray-600">{subtitle}</p>}

@@ -82,7 +82,7 @@ export const TetAuthLayout = ({ title, subtitle, children, footer }) => {
               {/* Brand */}
               <Link to="/" className="inline-block">
                 <p className="text-sm font-medium uppercase tracking-wider text-yellow-200">
-                  Hust Collab Platform
+                  HUST Minislack
                 </p>
               </Link>
 

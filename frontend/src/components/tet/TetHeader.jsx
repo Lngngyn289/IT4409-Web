@@ -9,7 +9,7 @@ import UserMenu from "../UserMenu.jsx";
  * TetHeader - Header component với theme Tết
  *
  * @param {Object} props
- * @param {string} props.title - Tiêu đề (mặc định: "HUST Collab Platform")
+ * @param {string} props.title - Tiêu đề (mặc định: "HUST Minislack")
  * @param {string} props.subtitle - Phụ đề (mặc định: lời chúc năm mới)
  * @param {boolean} props.showUserMenu - Hiển thị user menu (mặc định: true)
  * @param {boolean} props.showLuckyCoin - Hiển thị đồng xu may mắn (mặc định: true)
@@ -17,7 +17,7 @@ import UserMenu from "../UserMenu.jsx";
  * @param {React.ReactNode} props.leftContent - Nội dung bên trái tùy chỉnh (thay thế logo)
  */
 export const TetHeader = ({
-  title = "HUST Collab Platform",
+  title = "HUST Minislack",
   subtitle = "Chúc Mừng Năm Mới 2026",
   showUserMenu = true,
   showLuckyCoin = true,
